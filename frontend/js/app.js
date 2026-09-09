@@ -1,4 +1,4 @@
-const API_URL = "https://gz-barbearia-ofc-1.onrender.com";
+const API_URL = "https://gz-barbearia-ofc-2.onrender.com";
 
 document.addEventListener("DOMContentLoaded", () => {
     const page = document.body.dataset.page;
