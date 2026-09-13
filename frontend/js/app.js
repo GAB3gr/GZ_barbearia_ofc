@@ -3,8 +3,6 @@ const API_URL = "https://gz-barbearia-ofc-2.onrender.com";
 document.addEventListener("DOMContentLoaded", () => {
     const page = document.body.dataset.page;
 
-    configurarTema();
-
     if (page === "index") {
         iniciarIndex();
     }
@@ -16,60 +14,53 @@ document.addEventListener("DOMContentLoaded", () => {
     if (page === "cliente") {
         iniciarCliente();
     }
+
+    configurarTema();
+    configurarSair();
 });
 
-/* =========================================================
-   REQUISIÇÕES
-========================================================= */
+// ============================================================
+// FUNÇÕES GERAIS
+// ============================================================
 
 async function request(url, options = {}) {
-    const response = await fetch(`${API_URL}${url}`, {
+    const resposta = await fetch(`${API_URL}${url}`, {
         headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            ...(options.headers || {})
         },
         ...options
     });
 
-    const data = await response.json().catch(() => ({}));
+    let dados = null;
 
-    if (!response.ok) {
+    try {
+        dados = await resposta.json();
+    } catch {
+        dados = null;
+    }
+
+    if (!resposta.ok) {
         throw new Error(
-            data.erro ||
-            data.mensagem ||
-            "Erro na requisição"
+            dados?.erro ||
+            dados?.error ||
+            `Erro ${resposta.status}`
         );
     }
 
-    return data;
+    return dados;
 }
-
-/* =========================================================
-   FUNÇÕES AUXILIARES
-========================================================= */
 
 function formatarData(data) {
     if (!data) return "";
 
-    const dataObj = new Date(data);
+    const partes = String(data)
+        .split("T")[0]
+        .split("-");
 
-    if (isNaN(dataObj.getTime())) {
-        return data;
-    }
+    if (partes.length !== 3) return data;
 
-    return dataObj.toLocaleDateString("pt-BR");
-}
-
-function criarLinhaVazia(
-    colspan,
-    texto = "Nenhum registro encontrado"
-) {
-    return `
-        <tr>
-            <td colspan="${colspan}" class="mensagem-vazia">
-                ${texto}
-            </td>
-        </tr>
-    `;
+    return `${partes[2]}/${partes[1]}/${partes[0]}`;
 }
 
 function limparElemento(elemento) {
@@ -78,1072 +69,974 @@ function limparElemento(elemento) {
     }
 }
 
-/* =========================================================
-   INDEX
-========================================================= */
+function criarLinhaVazia(
+    tbody,
+    colunas,
+    mensagem = "Nenhum registro encontrado."
+) {
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="${colunas}" style="text-align:center;">
+                ${mensagem}
+            </td>
+        </tr>
+    `;
+}
 
-async function iniciarIndex() {
-    const statusApi = document.getElementById("status-api");
-    const totalClientes = document.getElementById("total-clientes");
-    const totalFuncionarios = document.getElementById("total-funcionarios");
-    const totalServicos = document.getElementById("total-servicos");
-    const totalAgendamentos = document.getElementById("total-agendamentos");
+function escaparHTML(valor) {
+    if (valor === null || valor === undefined) {
+        return "";
+    }
 
-    const listaAgendamentosHome =
-        document.getElementById("lista-agendamentos-home");
+    return String(valor)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
 
-    try {
-        const [
-            clientes,
-            funcionarios,
-            servicos,
-            agendamentos
-        ] = await Promise.all([
-            request("/clientes"),
-            request("/funcionarios"),
-            request("/servicos"),
-            request("/agendamentos")
-        ]);
+function formatarPreco(valor) {
+    const numero = Number(valor);
 
-        if (statusApi) {
-            statusApi.textContent =
-                "Conexão com backend funcionando.";
-        }
+    if (Number.isNaN(numero)) {
+        return "R$ 0,00";
+    }
 
-        if (totalClientes) {
-            totalClientes.textContent = clientes.length;
-        }
+    return numero.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+    });
+}
 
-        if (totalFuncionarios) {
-            totalFuncionarios.textContent = funcionarios.length;
-        }
+function caminhoImagem(imagem) {
+    if (!imagem) return "";
 
-        if (totalServicos) {
-            totalServicos.textContent = servicos.length;
-        }
+    const nome = String(imagem)
+        .replace(/^.*[\\\/]/, "")
+        .trim();
 
-        if (totalAgendamentos) {
-            totalAgendamentos.textContent = agendamentos.length;
-        }
+    if (!nome) return "";
 
-        if (!listaAgendamentosHome) return;
+    return `/frontend/imagens/${encodeURIComponent(nome)}`;
+}
 
-        if (!agendamentos.length) {
-            listaAgendamentosHome.innerHTML =
-                criarLinhaVazia(6);
+function normalizarTipo(tipo) {
+    return String(tipo || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+}
 
+// ============================================================
+// LOGIN
+// ============================================================
+
+function iniciarIndex() {
+    const formLogin = document.getElementById("form-login");
+
+    if (!formLogin) return;
+
+    formLogin.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const email = document.getElementById("email")?.value.trim();
+        const senha = document.getElementById("senha")?.value;
+
+        if (!email || !senha) {
+            alert("Preencha todos os campos.");
             return;
         }
 
-        listaAgendamentosHome.innerHTML =
-            agendamentos.map(item => `
-                <tr>
-                    <td>${item.id_agendamentos ?? ""}</td>
-                    <td>${formatarData(item.data)}</td>
-                    <td>${item.horario ?? ""}</td>
-                    <td>${item.cliente ?? ""}</td>
-                    <td>${item.servico ?? ""}</td>
-                    <td>${item.funcionario ?? ""}</td>
-                </tr>
-            `).join("");
-
-    } catch (error) {
-        console.error(error);
-
-        if (statusApi) {
-            statusApi.textContent =
-                `Erro: ${error.message}`;
-        }
-
-        if (listaAgendamentosHome) {
-            listaAgendamentosHome.innerHTML =
-                criarLinhaVazia(
-                    6,
-                    "Não foi possível carregar os agendamentos"
-                );
-        }
-    }
-}
-
-/* =========================================================
-   DASHBOARD
-========================================================= */
-
-async function iniciarDashboard() {
-    configurarFormularioClientes();
-    configurarFormularioFuncionarios();
-    configurarFormularioServicos();
-    configurarFormularioAgendamentos();
-
-    await carregarTudoDashboard();
-}
-
-async function carregarTudoDashboard() {
-    try {
-        await Promise.all([
-            carregarClientes(),
-            carregarFuncionarios(),
-            carregarServicos()
-        ]);
-
-        await carregarSelectsAgendamento();
-
-        const tabela =
-            document.getElementById("lista-agendamentos");
-
-        if (tabela) {
-            await carregarAgendamentos();
-        }
-
-    } catch (error) {
-        console.error(
-            "Erro ao carregar dashboard:",
-            error
-        );
-    }
-}
-
-/* =========================================================
-   CLIENTES
-========================================================= */
-
-function configurarFormularioClientes() {
-    const form =
-        document.getElementById("form-cliente");
-
-    const cancelar =
-        document.getElementById("cancelar-cliente");
-
-    if (form) {
-        form.addEventListener(
-            "submit",
-            salvarCliente
-        );
-    }
-
-    if (cancelar) {
-        cancelar.addEventListener(
-            "click",
-            resetarFormularioCliente
-        );
-    }
-}
-
-async function carregarClientes() {
-    const tbody =
-        document.getElementById("lista-clientes");
-
-    if (!tbody) return;
-
-    try {
-        const clientes =
-            await request("/clientes");
-
-        if (!clientes.length) {
-            tbody.innerHTML =
-                criarLinhaVazia(4);
-
-            return;
-        }
-
-        tbody.innerHTML =
-            clientes.map(cliente => `
-                <tr>
-                    <td>${cliente.id_clientes ?? ""}</td>
-
-                    <td>${cliente.nome ?? ""}</td>
-
-                    <td>${cliente.telefone ?? ""}</td>
-
-                    <td>
-                        <div class="acoes">
-
-                            <button
-                                type="button"
-                                onclick='editarCliente(${JSON.stringify(cliente)})'
-                            >
-                                Editar
-                            </button>
-
-                            <button
-                                type="button"
-                                class="perigo"
-                                onclick="excluirCliente(${cliente.id_clientes})"
-                            >
-                                Excluir
-                            </button>
-
-                        </div>
-                    </td>
-                </tr>
-            `).join("");
-
-    } catch (error) {
-        console.error(error);
-
-        tbody.innerHTML =
-            criarLinhaVazia(
-                4,
-                error.message
-            );
-    }
-}
-
-async function salvarCliente(event) {
-    event.preventDefault();
-
-    const id =
-        document.getElementById("cliente-id")?.value;
-
-    const nome =
-        document.getElementById("cliente-nome")?.value.trim();
-
-    const telefone =
-        document.getElementById("cliente-telefone")?.value.trim();
-
-    if (!nome || !telefone) {
-        alert("Preencha todos os campos.");
-        return;
-    }
-
-    const payload = {
-        nome,
-        telefone
-    };
-
-    try {
-        if (id) {
-            await request(`/clientes/${id}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-
-        } else {
-            await request("/clientes", {
+        try {
+            const usuario = await request("/usuarios/login", {
                 method: "POST",
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    email,
+                    senha
+                })
             });
+
+            localStorage.setItem(
+                "usuario",
+                JSON.stringify(usuario)
+            );
+
+            if (usuario.nome) {
+                localStorage.setItem("nome", usuario.nome);
+            }
+
+            if (usuario.tipo) {
+                localStorage.setItem("tipo", usuario.tipo);
+            }
+
+            if (usuario.email) {
+                localStorage.setItem("email", usuario.email);
+            }
+
+            if (usuario.telefone) {
+                localStorage.setItem(
+                    "telefone",
+                    usuario.telefone
+                );
+            }
+
+            if (
+                usuario.tipo === "adm" ||
+                usuario.tipo === "admin" ||
+                usuario.tipo === "administrador"
+            ) {
+                window.location.href =
+                    "/frontend/admin/dashboard.html";
+            } else {
+                window.location.href =
+                    "/frontend/user/cliente.html";
+            }
+
+        } catch (erro) {
+            console.error("Erro no login:", erro);
+
+            alert(
+                erro.message ||
+                "Erro ao realizar login."
+            );
         }
-
-        resetarFormularioCliente();
-
-        await carregarClientes();
-        await carregarSelectsAgendamento();
-
-    } catch (error) {
-        alert(error.message);
-    }
+    });
 }
 
-function editarCliente(cliente) {
-    const id =
-        document.getElementById("cliente-id");
+// ============================================================
+// SAIR
+// ============================================================
 
-    const nome =
-        document.getElementById("cliente-nome");
+function sair() {
+    localStorage.removeItem("usuario");
+    localStorage.removeItem("nome");
+    localStorage.removeItem("tipo");
+    localStorage.removeItem("email");
+    localStorage.removeItem("telefone");
 
-    const telefone =
-        document.getElementById("cliente-telefone");
-
-    if (id) {
-        id.value = cliente.id_clientes;
-    }
-
-    if (nome) {
-        nome.value = cliente.nome;
-    }
-
-    if (telefone) {
-        telefone.value = cliente.telefone;
-    }
+    window.location.href = "/frontend/login.html";
 }
 
-async function excluirCliente(id) {
-    if (!confirm("Excluir cliente?")) {
-        return;
-    }
+function configurarSair() {
+    const botoesSair = document.querySelectorAll(
+        "#btn-sair, #sair, .btn-sair, [data-action='sair']"
+    );
+
+    botoesSair.forEach((botao) => {
+        botao.addEventListener("click", (event) => {
+            event.preventDefault();
+            sair();
+        });
+    });
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+
+function iniciarDashboard() {
+    carregarClientesDashboard();
+    carregarFuncionariosDashboard();
+    carregarServicosDashboard();
+    configurarFormularioAgendamentos();
+    carregarAgendamentos();
+    carregarSelectsAgendamento();
+}
+
+// ============================================================
+// CLIENTES - DASHBOARD
+// ============================================================
+
+async function carregarClientesDashboard() {
+    const tabela = document.getElementById("lista-clientes");
+
+    if (!tabela) return;
 
     try {
-        await request(`/clientes/${id}`, {
-            method: "DELETE"
+        const clientes = await request("/clientes");
+
+        limparElemento(tabela);
+
+        if (!clientes || clientes.length === 0) {
+            criarLinhaVazia(tabela, 5);
+            return;
+        }
+
+        clientes.forEach((cliente) => {
+            const tr = document.createElement("tr");
+
+            tr.innerHTML = `
+                <td>${cliente.id_clientes}</td>
+
+                <td>
+                    ${escaparHTML(cliente.nome)}
+                </td>
+
+                <td>
+                    ${escaparHTML(cliente.email)}
+                </td>
+
+                <td>
+                    ${escaparHTML(cliente.telefone)}
+                </td>
+
+                <td>
+                    <button
+                        type="button"
+                        onclick="editarCliente(${cliente.id_clientes})"
+                    >
+                        Editar
+                    </button>
+
+                    <button
+                        type="button"
+                        onclick="excluirCliente(${cliente.id_clientes})"
+                    >
+                        Excluir
+                    </button>
+                </td>
+            `;
+
+            tabela.appendChild(tr);
         });
 
-        await carregarClientes();
-        await carregarSelectsAgendamento();
-
-        const tabela =
-            document.getElementById("lista-agendamentos");
-
-        if (tabela) {
-            await carregarAgendamentos();
-        }
-
-    } catch (error) {
-        alert(error.message);
-    }
-}
-
-function resetarFormularioCliente() {
-    const form =
-        document.getElementById("form-cliente");
-
-    const id =
-        document.getElementById("cliente-id");
-
-    if (form) {
-        form.reset();
-    }
-
-    if (id) {
-        id.value = "";
-    }
-}
-
-/* =========================================================
-   FUNCIONÁRIOS
-========================================================= */
-
-function configurarFormularioFuncionarios() {
-    const form =
-        document.getElementById("form-funcionario");
-
-    const cancelar =
-        document.getElementById("cancelar-funcionario");
-
-    if (form) {
-        form.addEventListener(
-            "submit",
-            salvarFuncionario
+    } catch (erro) {
+        console.error(
+            "Erro ao carregar clientes:",
+            erro
         );
-    }
 
-    if (cancelar) {
-        cancelar.addEventListener(
-            "click",
-            resetarFormularioFuncionario
+        criarLinhaVazia(
+            tabela,
+            5,
+            "Erro ao carregar clientes."
         );
     }
 }
 
-async function carregarFuncionarios() {
-    const tbody =
+// ============================================================
+// FUNCIONÁRIOS
+// ============================================================
+
+async function carregarFuncionariosDashboard() {
+    const tabela =
         document.getElementById("lista-funcionarios");
 
-    if (!tbody) return;
+    if (!tabela) return;
 
     try {
         const funcionarios =
             await request("/funcionarios");
 
-        if (!funcionarios.length) {
-            tbody.innerHTML =
-                criarLinhaVazia(3);
+        limparElemento(tabela);
 
+        if (!funcionarios || funcionarios.length === 0) {
+            criarLinhaVazia(tabela, 4);
             return;
         }
 
-        tbody.innerHTML =
-            funcionarios.map(funcionario => `
-                <tr>
+        funcionarios.forEach((funcionario) => {
+            const tr = document.createElement("tr");
 
-                    <td>
-                        ${funcionario.id_funcionarios ?? ""}
-                    </td>
+            tr.innerHTML = `
+                <td>
+                    ${funcionario.id_funcionarios}
+                </td>
 
-                    <td>
-                        ${funcionario.nome ?? ""}
-                    </td>
+                <td>
+                    ${escaparHTML(funcionario.nome)}
+                </td>
 
-                    <td>
-                        <div class="acoes">
+                <td>
+                    ${escaparHTML(
+                        funcionario.telefone || ""
+                    )}
+                </td>
 
-                            <button
-                                type="button"
-                                onclick='editarFuncionario(${JSON.stringify(funcionario)})'
-                            >
-                                Editar
-                            </button>
+                <td>
+                    <button
+                        type="button"
+                        onclick="editarFuncionario(${funcionario.id_funcionarios})"
+                    >
+                        Editar
+                    </button>
 
-                            <button
-                                type="button"
-                                class="perigo"
-                                onclick="excluirFuncionario(${funcionario.id_funcionarios})"
-                            >
-                                Excluir
-                            </button>
+                    <button
+                        type="button"
+                        onclick="excluirFuncionario(${funcionario.id_funcionarios})"
+                    >
+                        Excluir
+                    </button>
+                </td>
+            `;
 
-                        </div>
-                    </td>
-
-                </tr>
-            `).join("");
-
-    } catch (error) {
-        console.error(error);
-
-        tbody.innerHTML =
-            criarLinhaVazia(
-                3,
-                error.message
-            );
-    }
-}
-
-async function salvarFuncionario(event) {
-    event.preventDefault();
-
-    const id =
-        document.getElementById("funcionario-id")?.value;
-
-    const nome =
-        document.getElementById("funcionario-nome")?.value.trim();
-
-    if (!nome) {
-        alert("Informe o nome do funcionário.");
-        return;
-    }
-
-    const payload = {
-        nome
-    };
-
-    try {
-        if (id) {
-            await request(`/funcionarios/${id}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-
-        } else {
-            await request("/funcionarios", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-        }
-
-        resetarFormularioFuncionario();
-
-        await carregarFuncionarios();
-        await carregarSelectsAgendamento();
-
-    } catch (error) {
-        alert(error.message);
-    }
-}
-
-function editarFuncionario(funcionario) {
-    const id =
-        document.getElementById("funcionario-id");
-
-    const nome =
-        document.getElementById("funcionario-nome");
-
-    if (id) {
-        id.value =
-            funcionario.id_funcionarios;
-    }
-
-    if (nome) {
-        nome.value =
-            funcionario.nome;
-    }
-}
-
-async function excluirFuncionario(id) {
-    if (!confirm("Excluir funcionário?")) {
-        return;
-    }
-
-    try {
-        await request(`/funcionarios/${id}`, {
-            method: "DELETE"
+            tabela.appendChild(tr);
         });
 
-        await carregarFuncionarios();
-        await carregarSelectsAgendamento();
-
-        const tabela =
-            document.getElementById("lista-agendamentos");
-
-        if (tabela) {
-            await carregarAgendamentos();
-        }
-
-    } catch (error) {
-        alert(error.message);
-    }
-}
-
-function resetarFormularioFuncionario() {
-    const form =
-        document.getElementById("form-funcionario");
-
-    const id =
-        document.getElementById("funcionario-id");
-
-    if (form) {
-        form.reset();
-    }
-
-    if (id) {
-        id.value = "";
-    }
-}
-
-/* =========================================================
-   SERVIÇOS
-========================================================= */
-
-function configurarFormularioServicos() {
-    const form =
-        document.getElementById("form-servico");
-
-    const cancelar =
-        document.getElementById("cancelar-servico");
-
-    if (form) {
-        form.addEventListener(
-            "submit",
-            salvarServico
+    } catch (erro) {
+        console.error(
+            "Erro ao carregar funcionários:",
+            erro
         );
-    }
 
-    if (cancelar) {
-        cancelar.addEventListener(
-            "click",
-            resetarFormularioServico
+        criarLinhaVazia(
+            tabela,
+            4,
+            "Erro ao carregar funcionários."
         );
     }
 }
 
-async function carregarServicos() {
-    const tbody =
+// ============================================================
+// SERVIÇOS
+// ============================================================
+
+async function carregarServicosDashboard() {
+    const tabela =
         document.getElementById("lista-servicos");
 
-    if (!tbody) return;
+    if (!tabela) return;
 
     try {
-        const servicos =
-            await request("/servicos");
+        const servicos = await request("/servicos");
 
-        if (!servicos.length) {
-            tbody.innerHTML =
-                criarLinhaVazia(5);
+        limparElemento(tabela);
 
+        if (!servicos || servicos.length === 0) {
+            criarLinhaVazia(tabela, 6);
             return;
         }
 
-        tbody.innerHTML =
-            servicos.map(servico => `
-                <tr>
+        servicos.forEach((servico) => {
+            const tipo =
+                escaparHTML(servico.tipo);
 
-                    <td>
-                        ${servico.id_servico ?? ""}
-                    </td>
+            const imagem =
+                escaparHTML(servico.imagem);
 
-                    <td>
-                        ${servico.tipo ?? ""}
-                    </td>
+            const preco =
+                formatarPreco(servico.preco);
 
-                    <td>
-                        R$ ${Number(
-                            servico.preco || 0
-                        ).toFixed(2).replace(".", ",")}
-                    </td>
+            const tr =
+                document.createElement("tr");
 
-                    <td>
-                        ${servico.imagem ?? ""}
-                    </td>
+            tr.innerHTML = `
+                <td>
+                    ${servico.id_servico}
+                </td>
 
-                    <td>
-                        <div class="acoes">
+                <td>
+                    ${tipo}
+                </td>
 
-                            <button
-                                type="button"
-                                onclick='editarServico(${JSON.stringify(servico)})'
-                            >
-                                Editar
-                            </button>
+                <td>
+                    ${
+                        imagem
+                            ? `
+                                <img
+                                    src="${caminhoImagem(imagem)}"
+                                    alt="${tipo}"
+                                    style="
+                                        width:70px;
+                                        height:50px;
+                                        object-fit:cover;
+                                        border-radius:8px;
+                                    "
+                                    onerror="
+                                        this.style.display='none'
+                                    "
+                                >
+                            `
+                            : "Sem imagem"
+                    }
+                </td>
 
-                            <button
-                                type="button"
-                                class="perigo"
-                                onclick="excluirServico(${servico.id_servico})"
-                            >
-                                Excluir
-                            </button>
+                <td>
+                    ${preco}
+                </td>
 
-                        </div>
-                    </td>
+                <td>
+                    ${
+                        normalizarTipo(
+                            servico.tipo
+                        ).includes("barba")
+                            ? "Barba"
+                            : "Corte"
+                    }
+                </td>
 
-                </tr>
-            `).join("");
+                <td>
+                    <button
+                        type="button"
+                        onclick="editarServico(${servico.id_servico})"
+                    >
+                        Editar
+                    </button>
 
-    } catch (error) {
-        console.error(error);
+                    <button
+                        type="button"
+                        onclick="excluirServico(${servico.id_servico})"
+                    >
+                        Excluir
+                    </button>
+                </td>
+            `;
 
-        tbody.innerHTML =
-            criarLinhaVazia(
-                5,
-                error.message
-            );
-    }
-}
-
-async function salvarServico(event) {
-    event.preventDefault();
-
-    const id =
-        document.getElementById("servico-id")?.value;
-
-    const tipo =
-        document.getElementById("servico-tipo")?.value.trim();
-
-    const preco =
-        document.getElementById("servico-preco")?.value;
-
-    const imagem =
-        document.getElementById("servico-imagem")?.value.trim();
-
-    if (!tipo || preco === "") {
-        alert("Preencha o tipo e o preço.");
-        return;
-    }
-
-    const payload = {
-        tipo,
-        preco,
-        imagem
-    };
-
-    try {
-        if (id) {
-            await request(`/servicos/${id}`, {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
-
-        } else {
-            await request("/servicos", {
-                method: "POST",
-                body: JSON.stringify(payload)
-            });
-        }
-
-        resetarFormularioServico();
-
-        await carregarServicos();
-        await carregarSelectsAgendamento();
-
-    } catch (error) {
-        alert(error.message);
-    }
-}
-
-function editarServico(servico) {
-    const id =
-        document.getElementById("servico-id");
-
-    const tipo =
-        document.getElementById("servico-tipo");
-
-    const preco =
-        document.getElementById("servico-preco");
-
-    const imagem =
-        document.getElementById("servico-imagem");
-
-    if (id) {
-        id.value = servico.id_servico;
-    }
-
-    if (tipo) {
-        tipo.value = servico.tipo;
-    }
-
-    if (preco) {
-        preco.value = servico.preco;
-    }
-
-    if (imagem) {
-        imagem.value = servico.imagem || "";
-    }
-}
-
-async function excluirServico(id) {
-    if (!confirm("Excluir serviço?")) {
-        return;
-    }
-
-    try {
-        await request(`/servicos/${id}`, {
-            method: "DELETE"
+            tabela.appendChild(tr);
         });
 
-        await carregarServicos();
-        await carregarSelectsAgendamento();
-
-        const tabela =
-            document.getElementById("lista-agendamentos");
-
-        if (tabela) {
-            await carregarAgendamentos();
-        }
-
-    } catch (error) {
-        alert(error.message);
-    }
-}
-
-function resetarFormularioServico() {
-    const form =
-        document.getElementById("form-servico");
-
-    const id =
-        document.getElementById("servico-id");
-
-    if (form) {
-        form.reset();
-    }
-
-    if (id) {
-        id.value = "";
-    }
-}
-
-/* =========================================================
-   AGENDAMENTOS
-========================================================= */
-
-function configurarFormularioAgendamentos() {
-    const form =
-        document.getElementById("form-agendamento");
-
-    const cancelar =
-        document.getElementById("cancelar-agendamento");
-
-    const verificar =
-        document.getElementById("verificar-disponibilidade");
-
-    if (form) {
-        form.addEventListener(
-            "submit",
-            salvarAgendamento
+    } catch (erro) {
+        console.error(
+            "Erro ao carregar serviços:",
+            erro
         );
-    }
 
-    if (cancelar) {
-        cancelar.addEventListener(
-            "click",
-            resetarFormularioAgendamento
-        );
-    }
-
-    if (verificar) {
-        verificar.addEventListener(
-            "click",
-            verificarDisponibilidade
+        criarLinhaVazia(
+            tabela,
+            6,
+            "Erro ao carregar serviços."
         );
     }
 }
+
+// ============================================================
+// AGENDAMENTOS - DASHBOARD
+// ============================================================
 
 async function carregarAgendamentos() {
-    const tbody =
+    const tabela =
         document.getElementById("lista-agendamentos");
 
-    if (!tbody) return;
+    if (!tabela) return;
 
     try {
         const agendamentos =
             await request("/agendamentos");
 
-        if (!agendamentos.length) {
-            tbody.innerHTML =
-                criarLinhaVazia(7);
+        limparElemento(tabela);
 
+        if (!agendamentos || agendamentos.length === 0) {
+            criarLinhaVazia(tabela, 8);
             return;
         }
 
-        tbody.innerHTML =
-            agendamentos.map(item => `
-                <tr>
+        agendamentos.forEach((item) => {
+            const tr =
+                document.createElement("tr");
 
-                    <td>
-                        ${item.id_agendamentos ?? ""}
-                    </td>
+            const servicoPrincipal =
+                item.servico ||
+                item.nome_servico ||
+                item.tipo ||
+                "Serviço";
 
-                    <td>
-                        ${formatarData(item.data)}
-                    </td>
+            const barba =
+                item.servico_barba ||
+                item.barba ||
+                "";
 
-                    <td>
-                        ${item.horario ?? ""}
-                    </td>
+            const servicosTexto = barba
+                ? `${escaparHTML(servicoPrincipal)} + ${escaparHTML(barba)}`
+                : escaparHTML(servicoPrincipal);
 
-                    <td>
-                        ${item.cliente ?? ""}
-                    </td>
+            const statusPagamento =
+                item.status_pagamento ||
+                "pendente";
 
-                    <td>
-                        ${item.servico ?? ""}
-                    </td>
+            tr.innerHTML = `
+                <td>
+                    ${item.id_agendamentos}
+                </td>
 
-                    <td>
-                        ${item.funcionario ?? ""}
-                    </td>
+                <td>
+                    ${formatarData(item.data)}
+                </td>
 
-                    <td>
-                        <div class="acoes">
+                <td>
+                    ${escaparHTML(item.horario || "")}
+                </td>
 
-                            <button
-                                type="button"
-                                onclick='editarAgendamento(${JSON.stringify(item)})'
-                            >
-                                Editar
-                            </button>
+                <td>
+                    ${escaparHTML(
+                        item.cliente ||
+                        item.nome_cliente ||
+                        ""
+                    )}
+                </td>
 
-                            <button
-                                type="button"
-                                class="perigo"
-                                onclick="excluirAgendamento(${item.id_agendamentos})"
-                            >
-                                Excluir
-                            </button>
+                <td>
+                    ${servicosTexto}
+                </td>
 
-                        </div>
-                    </td>
+                <td>
+                    ${escaparHTML(
+                        item.funcionario ||
+                        item.nome_funcionario ||
+                        ""
+                    )}
+                </td>
 
-                </tr>
-            `).join("");
+                <td>
+                    ${escaparHTML(
+                        item.metodo_pagamento || ""
+                    )}
 
-    } catch (error) {
-        console.error(error);
+                    <br>
 
-        tbody.innerHTML =
-            criarLinhaVazia(
-                7,
-                error.message
-            );
-    }
-}
+                    <small>
+                        ${escaparHTML(statusPagamento)}
+                    </small>
+                </td>
 
-/* =========================================================
-   SELECTS + CARDS DOS SERVIÇOS
-========================================================= */
-
-async function carregarSelectsAgendamento() {
-    try {
-        const [
-            clientes,
-            servicos,
-            funcionarios
-        ] = await Promise.all([
-            request("/clientes"),
-            request("/servicos"),
-            request("/funcionarios")
-        ]);
-
-        const selectCliente =
-            document.getElementById(
-                "agendamento-cliente"
-            );
-
-        const selectServico =
-            document.getElementById(
-                "agendamento-servico"
-            );
-
-        const selectFuncionario =
-            document.getElementById(
-                "agendamento-funcionario"
-            );
-
-        /* CLIENTES */
-
-        if (selectCliente) {
-            selectCliente.innerHTML =
-                '<option value="">Selecione</option>' +
-                clientes.map(cliente => `
-                    <option value="${cliente.id_clientes}">
-                        ${cliente.id_clientes} - ${cliente.nome}
-                    </option>
-                `).join("");
-        }
-
-        /* SERVIÇOS */
-
-        if (selectServico) {
-            selectServico.innerHTML =
-                '<option value="">Selecione</option>' +
-                servicos.map(servico => `
-                    <option value="${servico.id_servico}">
-                        ${servico.id_servico} - ${servico.tipo}
-                    </option>
-                `).join("");
-        }
-
-        /* FUNCIONÁRIOS */
-
-        if (selectFuncionario) {
-            selectFuncionario.innerHTML =
-                '<option value="">Selecione</option>' +
-                funcionarios.map(funcionario => `
-                    <option value="${funcionario.id_funcionarios}">
-                        ${funcionario.id_funcionarios} - ${funcionario.nome}
-                    </option>
-                `).join("");
-        }
-
-        /* =================================================
-           CARDS DOS SERVIÇOS PARA O CLIENTE
-        ================================================= */
-
-        const listaServicosCliente =
-            document.getElementById(
-                "lista-servicos-cliente"
-            );
-
-        if (!listaServicosCliente) {
-            return;
-        }
-
-        if (!servicos.length) {
-            listaServicosCliente.innerHTML =
-                "<p>Nenhum corte disponível no momento.</p>";
-
-            return;
-        }
-
-        listaServicosCliente.innerHTML =
-            servicos.map(servico => {
-
-                const preco =
-                    Number(
-                        servico.preco || 0
-                    ).toLocaleString(
-                        "pt-BR",
-                        {
-                            style: "currency",
-                            currency: "BRL"
-                        }
-                    );
-
-                let imagem = "";
-
-                if (servico.imagem) {
-                    if (
-                        servico.imagem.startsWith("http://") ||
-                        servico.imagem.startsWith("https://") ||
-                        servico.imagem.startsWith("/")
-                    ) {
-                        imagem = servico.imagem;
-                    } else {
-                        imagem =
-                            `/frontend/Imagens/${servico.imagem}`;
-                    }
-                }
-
-                return `
-                    <div
-                        class="servico-cliente-card"
-                        data-servico-id="${servico.id_servico}"
+                <td>
+                    <button
+                        type="button"
+                        onclick="editarAgendamento(${item.id_agendamentos})"
                     >
+                        Editar
+                    </button>
 
-                        ${
-                            imagem
-                                ? `
-                                    <img
-                                        src="${imagem}"
-                                        alt="${servico.tipo}"
-                                        onerror="
-                                            this.style.display='none';
-                                            this.nextElementSibling.style.display='flex';
-                                        "
-                                    >
+                    <button
+                        type="button"
+                        onclick="excluirAgendamento(${item.id_agendamentos})"
+                    >
+                        Excluir
+                    </button>
+                </td>
+            `;
 
-                                    <div
-                                        class="servico-sem-imagem"
-                                        style="display:none;"
-                                    >
-                                        Imagem não encontrada
-                                    </div>
-                                `
-                                : `
-                                    <div class="servico-sem-imagem">
-                                        Sem imagem
-                                    </div>
-                                `
-                        }
+            tabela.appendChild(tr);
+        });
 
-                        <div class="servico-cliente-info">
-
-                            <h3>
-                                ${servico.tipo}
-                            </h3>
-
-                            <div class="servico-cliente-preco">
-                                ${preco}
-                            </div>
-
-                            <div class="servico-cliente-selecionado">
-                                ✓ Corte selecionado
-                            </div>
-
-                        </div>
-
-                    </div>
-                `;
-            }).join("");
-
-        /* CLIQUE NOS CARDS */
-
-        document
-            .querySelectorAll(".servico-cliente-card")
-            .forEach(card => {
-
-                card.addEventListener(
-                    "click",
-                    () => {
-
-                        const idServico =
-                            card.dataset.servicoId;
-
-                        if (selectServico) {
-                            selectServico.value =
-                                idServico;
-                        }
-
-                        document
-                            .querySelectorAll(
-                                ".servico-cliente-card"
-                            )
-                            .forEach(outroCard => {
-                                outroCard.classList.remove(
-                                    "selecionado"
-                                );
-                            });
-
-                        card.classList.add(
-                            "selecionado"
-                        );
-                    }
-                );
-            });
-
-    } catch (error) {
+    } catch (erro) {
         console.error(
-            "Erro ao carregar selects:",
-            error
+            "Erro ao carregar agendamentos:",
+            erro
+        );
+
+        criarLinhaVazia(
+            tabela,
+            8,
+            "Erro ao carregar agendamentos."
         );
     }
 }
 
-/* =========================================================
-   SALVAR AGENDAMENTO
-========================================================= */
+// ============================================================
+// SELECTS / SERVIÇOS
+// ============================================================
+
+async function carregarSelectsAgendamento() {
+    const selectFuncionario =
+        document.getElementById(
+            "agendamento-funcionario"
+        );
+
+    const selectCorte =
+        document.getElementById(
+            "agendamento-corte"
+        );
+
+    const selectBarba =
+        document.getElementById(
+            "agendamento-barba"
+        );
+
+    if (
+        !selectFuncionario &&
+        !selectCorte &&
+        !selectBarba
+    ) {
+        return;
+    }
+
+    try {
+        const [funcionarios, servicos] =
+            await Promise.all([
+                request("/funcionarios"),
+                request("/servicos")
+            ]);
+
+        if (selectFuncionario) {
+            selectFuncionario.innerHTML = `
+                <option value="">
+                    Selecione o funcionário
+                </option>
+            `;
+
+            funcionarios.forEach((funcionario) => {
+                const option =
+                    document.createElement("option");
+
+                option.value =
+                    funcionario.id_funcionarios;
+
+                option.textContent =
+                    funcionario.nome;
+
+                selectFuncionario.appendChild(option);
+            });
+        }
+
+        const cortes = [];
+        const barbas = [];
+
+        servicos.forEach((servico) => {
+            const tipo =
+                normalizarTipo(servico.tipo);
+
+            if (tipo.includes("barba")) {
+                barbas.push(servico);
+            } else {
+                cortes.push(servico);
+            }
+        });
+
+        if (selectCorte) {
+            selectCorte.innerHTML = `
+                <option value="">
+                    Selecione o corte
+                </option>
+            `;
+
+            cortes.forEach((servico) => {
+                const option =
+                    document.createElement("option");
+
+                option.value =
+                    servico.id_servico;
+
+                option.textContent =
+                    `${servico.tipo} - ${formatarPreco(servico.preco)}`;
+
+                selectCorte.appendChild(option);
+            });
+        }
+
+        if (selectBarba) {
+            selectBarba.innerHTML = `
+                <option value="">
+                    Nenhuma barba
+                </option>
+            `;
+
+            barbas.forEach((servico) => {
+                const option =
+                    document.createElement("option");
+
+                option.value =
+                    servico.id_servico;
+
+                option.textContent =
+                    `${servico.tipo} - ${formatarPreco(servico.preco)}`;
+
+                selectBarba.appendChild(option);
+            });
+        }
+
+        renderizarCardsServicos(
+            document.getElementById(
+                "lista-cortes-cliente"
+            ),
+            cortes,
+            "corte"
+        );
+
+        renderizarCardsServicos(
+            document.getElementById(
+                "lista-barbas-cliente"
+            ),
+            barbas,
+            "barba"
+        );
+
+    } catch (erro) {
+        console.error(
+            "Erro ao carregar selects:",
+            erro
+        );
+    }
+}
+
+// ============================================================
+// CARDS DE SERVIÇOS
+// ============================================================
+
+function renderizarCardsServicos(
+    container,
+    servicos,
+    tipo
+) {
+    if (!container) return;
+
+    limparElemento(container);
+
+    if (!servicos || servicos.length === 0) {
+        container.innerHTML = `
+            <p style="text-align:center;">
+                Nenhum serviço disponível.
+            </p>
+        `;
+
+        return;
+    }
+
+    servicos.forEach((servico) => {
+        const card =
+            document.createElement("div");
+
+        card.className = "card-servico";
+
+        card.dataset.id =
+            servico.id_servico;
+
+        card.dataset.tipo =
+            tipo;
+
+        const imagem =
+            caminhoImagem(servico.imagem);
+
+        card.innerHTML = `
+            ${
+                imagem
+                    ? `
+                        <img
+                            src="${imagem}"
+                            alt="${escaparHTML(servico.tipo)}"
+                            onerror="
+                                this.style.display='none'
+                            "
+                        >
+                    `
+                    : `
+                        <div
+                            style="
+                                height:170px;
+                                display:flex;
+                                align-items:center;
+                                justify-content:center;
+                                background:#ddd;
+                            "
+                        >
+                            Sem imagem
+                        </div>
+                    `
+            }
+
+            <div class="card-servico-info">
+                <div class="card-servico-nome">
+                    ${escaparHTML(servico.tipo)}
+                </div>
+
+                <div class="card-servico-preco">
+                    ${formatarPreco(servico.preco)}
+                </div>
+            </div>
+        `;
+
+        card.addEventListener("click", () => {
+            selecionarServico(
+                servico.id_servico,
+                tipo
+            );
+        });
+
+        container.appendChild(card);
+    });
+
+    if (tipo === "barba") {
+        const cardNenhuma =
+            document.createElement("div");
+
+        cardNenhuma.className =
+            "card-servico card-nenhuma-barba";
+
+        cardNenhuma.dataset.id = "";
+
+        cardNenhuma.dataset.tipo = "barba";
+
+        cardNenhuma.innerHTML = `
+            <div
+                style="
+                    height:170px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    font-size:3rem;
+                "
+            >
+                ✕
+            </div>
+
+            <div class="card-servico-info">
+                <div class="card-servico-nome">
+                    Nenhuma barba
+                </div>
+
+                <div class="card-servico-preco">
+                    Grátis
+                </div>
+            </div>
+        `;
+
+        cardNenhuma.addEventListener(
+            "click",
+            selecionarNenhumaBarba
+        );
+
+        container.appendChild(cardNenhuma);
+    }
+}
+
+// ============================================================
+// SELECIONAR SERVIÇO
+// ============================================================
+
+function selecionarServico(idServico, tipo) {
+    const id = String(idServico);
+
+    if (tipo === "corte") {
+        const select =
+            document.getElementById(
+                "agendamento-corte"
+            );
+
+        if (select) {
+            select.value = id;
+        }
+
+        document
+            .querySelectorAll(
+                "#lista-cortes-cliente .card-servico"
+            )
+            .forEach((card) => {
+                card.classList.toggle(
+                    "selecionado",
+                    String(card.dataset.id) === id
+                );
+            });
+
+        return;
+    }
+
+    if (tipo === "barba") {
+        const select =
+            document.getElementById(
+                "agendamento-barba"
+            );
+
+        if (select) {
+            select.value = id;
+        }
+
+        document
+            .querySelectorAll(
+                "#lista-barbas-cliente .card-servico"
+            )
+            .forEach((card) => {
+                card.classList.toggle(
+                    "selecionado",
+                    String(card.dataset.id) === id
+                );
+            });
+    }
+}
+
+// ============================================================
+// NENHUMA BARBA
+// ============================================================
+
+function selecionarNenhumaBarba() {
+    const select =
+        document.getElementById(
+            "agendamento-barba"
+        );
+
+    if (select) {
+        select.value = "";
+    }
+
+    document
+        .querySelectorAll(
+            "#lista-barbas-cliente .card-servico"
+        )
+        .forEach((card) => {
+            card.classList.remove(
+                "selecionado"
+            );
+        });
+
+    const nenhuma =
+        document.querySelector(
+            "#lista-barbas-cliente .card-nenhuma-barba"
+        );
+
+    if (nenhuma) {
+        nenhuma.classList.add(
+            "selecionado"
+        );
+    }
+}
+
+// ============================================================
+// FORMULÁRIO DE AGENDAMENTO
+// ============================================================
+
+function configurarFormularioAgendamentos() {
+    const form =
+        document.getElementById(
+            "form-agendamento"
+        );
+
+    const btnAgendar =
+        document.getElementById(
+            "btn-agendar"
+        );
+
+    const btnCancelar =
+        document.getElementById(
+            "cancelar-agendamento"
+        );
+
+    if (form) {
+        form.addEventListener(
+            "submit",
+            (event) => {
+                event.preventDefault();
+                salvarAgendamento(event);
+            }
+        );
+    } else if (btnAgendar) {
+        btnAgendar.addEventListener(
+            "click",
+            (event) => {
+                event.preventDefault();
+                salvarAgendamento(event);
+            }
+        );
+    }
+
+    if (btnCancelar) {
+        btnCancelar.addEventListener(
+            "click",
+            (event) => {
+                event.preventDefault();
+                resetarFormularioAgendamento();
+            }
+        );
+    }
+}
+
+// ============================================================
+// SALVAR AGENDAMENTO
+// ============================================================
 
 async function salvarAgendamento(event) {
-    event.preventDefault();
+    if (event) {
+        event.preventDefault();
+    }
 
     const id =
         document.getElementById(
@@ -1162,12 +1055,22 @@ async function salvarAgendamento(event) {
 
     const servico_id_servico =
         document.getElementById(
-            "agendamento-servico"
+            "agendamento-corte"
+        )?.value;
+
+    const servico_barba_id_servico =
+        document.getElementById(
+            "agendamento-barba"
         )?.value;
 
     const funcionarios_id_funcionarios =
         document.getElementById(
             "agendamento-funcionario"
+        )?.value;
+
+    const metodo_pagamento =
+        document.getElementById(
+            "agendamento-pagamento"
         )?.value;
 
     if (!data) {
@@ -1181,7 +1084,7 @@ async function salvarAgendamento(event) {
     }
 
     if (!servico_id_servico) {
-        alert("Selecione um corte antes de agendar.");
+        alert("Selecione um corte.");
         return;
     }
 
@@ -1190,99 +1093,442 @@ async function salvarAgendamento(event) {
         return;
     }
 
-    const idUsuario =
-        localStorage.getItem("id_usuario");
-
-    if (!idUsuario) {
+    if (!metodo_pagamento) {
         alert(
-            "Usuário não identificado. Faça login novamente."
+            "Selecione a forma de pagamento."
         );
         return;
     }
 
+    // Horário usando minutos corretamente
+    const [hora, minuto] =
+        horario.split(":").map(Number);
+
+    const minutosDoDia =
+        hora * 60 + minuto;
+
+    const inicioManha = 7 * 60;
+    const fimManha = 11 * 60 + 30;
+
+    const inicioTarde = 13 * 60;
+    const fimTarde = 19 * 60;
+
+    const dentroManha =
+        minutosDoDia >= inicioManha &&
+        minutosDoDia <= fimManha;
+
+    const dentroTarde =
+        minutosDoDia >= inicioTarde &&
+        minutosDoDia <= fimTarde;
+
+    if (!dentroManha && !dentroTarde) {
+        alert(
+            "O horário deve estar entre 07:00–11:30 ou 13:00–19:00."
+        );
+
+        return;
+    }
+
+    const dataSelecionada =
+        new Date(`${data}T00:00:00`);
+
+    if (dataSelecionada.getDay() === 0) {
+        alert(
+            "A barbearia não funciona aos domingos."
+        );
+
+        return;
+    }
+
+    const hoje = new Date();
+
+    hoje.setHours(0, 0, 0, 0);
+
+    if (dataSelecionada < hoje) {
+        alert(
+            "Não é possível agendar uma data passada."
+        );
+
+        return;
+    }
+
+    let usuario = null;
+
     try {
+        usuario = JSON.parse(
+            localStorage.getItem(
+                "usuario"
+            )
+        );
+    } catch {
+        usuario = null;
+    }
 
-        /* Descobre automaticamente o cliente relacionado ao usuário */
+    const nomeLocal =
+        localStorage.getItem("nome") ||
+        usuario?.nome;
 
+    const telefoneLocal =
+        localStorage.getItem("telefone") ||
+        usuario?.telefone;
+
+    if (!nomeLocal && !telefoneLocal) {
+        alert(
+            "Não foi possível identificar o cliente."
+        );
+
+        return;
+    }
+
+    let cliente;
+
+    try {
         const clientes =
             await request("/clientes");
 
-        const nomeUsuario =
-            localStorage.getItem("nome");
+        cliente = clientes.find((c) => {
+            const mesmoNome =
+                nomeLocal &&
+                String(c.nome)
+                    .trim()
+                    .toLowerCase() ===
+                String(nomeLocal)
+                    .trim()
+                    .toLowerCase();
 
-        const telefoneUsuario =
-            localStorage.getItem("telefone");
+            const mesmoTelefone =
+                telefoneLocal &&
+                String(c.telefone)
+                    .replace(/\D/g, "") ===
+                String(telefoneLocal)
+                    .replace(/\D/g, "");
 
-        const cliente =
-            clientes.find(c =>
-                c.nome === nomeUsuario &&
-                c.telefone === telefoneUsuario
-            );
+            return mesmoTelefone || mesmoNome;
+        });
 
-        if (!cliente) {
-            alert(
-                "Cliente não encontrado. Faça o cadastro novamente."
-            );
-            return;
-        }
+    } catch (erro) {
+        console.error(
+            "Erro ao buscar cliente:",
+            erro
+        );
 
-        const payload = {
-            data,
-            horario,
-            clientes_id_clientes:
-                cliente.id_clientes,
-            servico_id_servico,
-            funcionarios_id_funcionarios
-        };
+        alert(
+            "Não foi possível identificar seu cadastro."
+        );
 
+        return;
+    }
+
+    if (!cliente) {
+        alert(
+            "Cliente não encontrado. Faça o cadastro novamente."
+        );
+
+        return;
+    }
+
+    const payload = {
+        data,
+        horario,
+
+        clientes_id_clientes:
+            cliente.id_clientes,
+
+        servico_id_servico:
+            Number(servico_id_servico),
+
+        servico_barba_id_servico:
+            servico_barba_id_servico
+                ? Number(
+                    servico_barba_id_servico
+                )
+                : null,
+
+        funcionarios_id_funcionarios:
+            Number(
+                funcionarios_id_funcionarios
+            ),
+
+        metodo_pagamento,
+
+        status_pagamento: "pendente"
+    };
+
+    try {
         if (id) {
-
             await request(
                 `/agendamentos/${id}`,
                 {
                     method: "PUT",
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(
+                        payload
+                    )
                 }
             );
 
-        } else {
+            alert(
+                "Agendamento atualizado com sucesso!"
+            );
 
+        } else {
             await request(
                 "/agendamentos",
                 {
                     method: "POST",
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(
+                        payload
+                    )
                 }
+            );
+
+            alert(
+                "Agendamento realizado com sucesso!"
             );
         }
 
-        alert(
-            id
-                ? "Agendamento atualizado com sucesso!"
-                : "Agendamento realizado com sucesso!"
-        );
-
         resetarFormularioAgendamento();
 
-        if (
-            document.body.dataset.page === "cliente"
-        ) {
-            await carregarAgendamentosCliente();
-        } else {
-            await carregarAgendamentos();
-        }
+        await carregarAgendamentos();
 
-    } catch (error) {
-        console.error(error);
-        alert(error.message);
+        await carregarAgendamentosCliente();
+
+    } catch (erro) {
+        console.error(
+            "Erro ao salvar agendamento:",
+            erro
+        );
+
+        alert(
+            erro.message ||
+            "Erro ao salvar agendamento."
+        );
     }
 }
 
-/* =========================================================
-   EDITAR AGENDAMENTO
-========================================================= */
+// ============================================================
+// EDITAR AGENDAMENTO
+// ============================================================
 
-function editarAgendamento(item) {
+async function editarAgendamento(id) {
+    try {
+        const agendamentos =
+            await request("/agendamentos");
+
+        const agendamento =
+            agendamentos.find(
+                (item) =>
+                    Number(
+                        item.id_agendamentos
+                    ) === Number(id)
+            );
+
+        if (!agendamento) {
+            alert(
+                "Agendamento não encontrado."
+            );
+
+            return;
+        }
+
+        const campoId =
+            document.getElementById(
+                "agendamento-id"
+            );
+
+        const campoData =
+            document.getElementById(
+                "agendamento-data"
+            );
+
+        const campoHorario =
+            document.getElementById(
+                "agendamento-horario"
+            );
+
+        const campoCorte =
+            document.getElementById(
+                "agendamento-corte"
+            );
+
+        const campoBarba =
+            document.getElementById(
+                "agendamento-barba"
+            );
+
+        const campoFuncionario =
+            document.getElementById(
+                "agendamento-funcionario"
+            );
+
+        const campoPagamento =
+            document.getElementById(
+                "agendamento-pagamento"
+            );
+
+        if (campoId) {
+            campoId.value =
+                agendamento.id_agendamentos;
+        }
+
+        if (campoData) {
+            campoData.value =
+                String(
+                    agendamento.data
+                ).split("T")[0];
+        }
+
+        if (campoHorario) {
+            campoHorario.value =
+                String(
+                    agendamento.horario
+                ).slice(0, 5);
+        }
+
+        if (campoCorte) {
+            campoCorte.value =
+                agendamento.servico_id_servico ||
+                "";
+        }
+
+        if (campoBarba) {
+            campoBarba.value =
+                agendamento.servico_barba_id_servico ||
+                "";
+        }
+
+        if (campoFuncionario) {
+            campoFuncionario.value =
+                agendamento.funcionarios_id_funcionarios ||
+                "";
+        }
+
+        if (campoPagamento) {
+            campoPagamento.value =
+                agendamento.metodo_pagamento ||
+                "";
+        }
+
+        document
+            .querySelectorAll(".card-servico")
+            .forEach((card) => {
+                card.classList.remove(
+                    "selecionado"
+                );
+            });
+
+        if (
+            agendamento.servico_id_servico
+        ) {
+            const cardCorte =
+                document.querySelector(
+                    `#lista-cortes-cliente .card-servico[data-id="${agendamento.servico_id_servico}"]`
+                );
+
+            if (cardCorte) {
+                cardCorte.classList.add(
+                    "selecionado"
+                );
+            }
+        }
+
+        if (
+            agendamento.servico_barba_id_servico
+        ) {
+            const cardBarba =
+                document.querySelector(
+                    `#lista-barbas-cliente .card-servico[data-id="${agendamento.servico_barba_id_servico}"]`
+                );
+
+            if (cardBarba) {
+                cardBarba.classList.add(
+                    "selecionado"
+                );
+            }
+        } else {
+            selecionarNenhumaBarba();
+        }
+
+        const botao =
+            document.getElementById(
+                "btn-agendar"
+            );
+
+        if (botao) {
+            botao.textContent =
+                "Atualizar agendamento";
+        }
+
+        const formulario =
+            document.getElementById(
+                "form-agendamento"
+            );
+
+        if (formulario) {
+            formulario.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+        }
+
+    } catch (erro) {
+        console.error(
+            "Erro ao editar agendamento:",
+            erro
+        );
+
+        alert(
+            erro.message ||
+            "Erro ao carregar agendamento."
+        );
+    }
+}
+
+// ============================================================
+// EXCLUIR AGENDAMENTO
+// ============================================================
+
+async function excluirAgendamento(id) {
+    const confirmar =
+        confirm(
+            "Tem certeza que deseja cancelar este agendamento?"
+        );
+
+    if (!confirmar) return;
+
+    try {
+        await request(
+            `/agendamentos/${id}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        alert(
+            "Agendamento cancelado com sucesso!"
+        );
+
+        await carregarAgendamentos();
+
+        await carregarAgendamentosCliente();
+
+    } catch (erro) {
+        console.error(
+            "Erro ao excluir agendamento:",
+            erro
+        );
+
+        alert(
+            erro.message ||
+            "Erro ao cancelar agendamento."
+        );
+    }
+}
+
+// ============================================================
+// RESETAR FORMULÁRIO
+// ============================================================
+
+function resetarFormularioAgendamento() {
     const id =
         document.getElementById(
             "agendamento-id"
@@ -1298,14 +1544,14 @@ function editarAgendamento(item) {
             "agendamento-horario"
         );
 
-    const cliente =
+    const corte =
         document.getElementById(
-            "agendamento-cliente"
+            "agendamento-corte"
         );
 
-    const servico =
+    const barba =
         document.getElementById(
-            "agendamento-servico"
+            "agendamento-barba"
         );
 
     const funcionario =
@@ -1313,134 +1559,42 @@ function editarAgendamento(item) {
             "agendamento-funcionario"
         );
 
-    if (id) {
-        id.value =
-            item.id_agendamentos;
-    }
+    const pagamento =
+        document.getElementById(
+            "agendamento-pagamento"
+        );
 
-    if (data) {
-        data.value =
-            item.data
-                ? item.data.split("T")[0]
-                : "";
-    }
-
-    if (horario) {
-        horario.value =
-            item.horario || "";
-    }
-
-    if (cliente) {
-        cliente.value =
-            item.clientes_id_clientes || "";
-    }
-
-    if (servico) {
-        servico.value =
-            item.servico_id_servico || "";
-    }
-
-    if (funcionario) {
-        funcionario.value =
-            item.funcionarios_id_funcionarios || "";
-    }
-
-    /* Marca o card correspondente */
+    if (id) id.value = "";
+    if (data) data.value = "";
+    if (horario) horario.value = "";
+    if (corte) corte.value = "";
+    if (barba) barba.value = "";
+    if (funcionario) funcionario.value = "";
+    if (pagamento) pagamento.value = "";
 
     document
-        .querySelectorAll(
-            ".servico-cliente-card"
-        )
-        .forEach(card => {
-
+        .querySelectorAll(".card-servico")
+        .forEach((card) => {
             card.classList.remove(
                 "selecionado"
             );
-
-            if (
-                card.dataset.servicoId ===
-                String(item.servico_id_servico)
-            ) {
-                card.classList.add(
-                    "selecionado"
-                );
-            }
-        });
-}
-
-/* =========================================================
-   EXCLUIR AGENDAMENTO
-========================================================= */
-
-async function excluirAgendamento(id) {
-    if (!confirm("Excluir agendamento?")) {
-        return;
-    }
-
-    try {
-        await request(
-            `/agendamentos/${id}`,
-            {
-                method: "DELETE"
-            }
-        );
-
-        if (
-            document.body.dataset.page === "cliente"
-        ) {
-            await carregarAgendamentosCliente();
-        } else {
-            await carregarAgendamentos();
-        }
-
-        limparListaDisponibilidade();
-
-    } catch (error) {
-        alert(error.message);
-    }
-}
-
-/* =========================================================
-   RESETAR AGENDAMENTO
-========================================================= */
-
-function resetarFormularioAgendamento() {
-    const form =
-        document.getElementById(
-            "form-agendamento"
-        );
-
-    const id =
-        document.getElementById(
-            "agendamento-id"
-        );
-
-    if (form) {
-        form.reset();
-    }
-
-    if (id) {
-        id.value = "";
-    }
-
-    document
-        .querySelectorAll(
-            ".servico-cliente-card"
-        )
-        .forEach(card => {
-
-            card.classList.remove(
-                "selecionado"
-            );
-
         });
 
-    limparListaDisponibilidade();
+    selecionarNenhumaBarba();
+
+    const btn =
+        document.getElementById(
+            "btn-agendar"
+        );
+
+    if (btn) {
+        btn.textContent = "Agendar";
+    }
 }
 
-/* =========================================================
-   DISPONIBILIDADE
-========================================================= */
+// ============================================================
+// DISPONIBILIDADE
+// ============================================================
 
 async function verificarDisponibilidade() {
     const data =
@@ -1458,290 +1612,553 @@ async function verificarDisponibilidade() {
             "lista-disponibilidade"
         );
 
+    if (!lista) return;
+
     if (!data || !funcionarioId) {
         alert(
-            "Selecione data e funcionário."
+            "Selecione a data e o funcionário."
         );
+
         return;
     }
 
     try {
-
-        const horarios =
+        const resposta =
             await request(
-                `/disponibilidade?data=${encodeURIComponent(data)}&funcionarioId=${encodeURIComponent(funcionarioId)}`
+                `/disponibilidade?data=${encodeURIComponent(
+                    data
+                )}&funcionarioId=${encodeURIComponent(
+                    funcionarioId
+                )}`
             );
 
         limparElemento(lista);
 
-        if (!horarios.length) {
-
-            if (lista) {
-                lista.innerHTML =
-                    "<li>Nenhum horário ocupado nessa data.</li>";
-            }
+        if (
+            !resposta ||
+            !resposta.length
+        ) {
+            lista.innerHTML =
+                "<p>Nenhum horário encontrado.</p>";
 
             return;
         }
 
-        if (lista) {
-            lista.innerHTML =
-                horarios.map(item => `
-                    <li>
-                        ${item.horario}
-                    </li>
-                `).join("");
-        }
+        resposta.forEach((horario) => {
+            const botao =
+                document.createElement(
+                    "button"
+                );
 
-    } catch (error) {
-        alert(error.message);
-    }
-}
+            botao.type = "button";
 
-function limparListaDisponibilidade() {
-    const lista =
-        document.getElementById(
-            "lista-disponibilidade"
+            botao.textContent =
+                typeof horario === "string"
+                    ? horario
+                    : horario.horario;
+
+            botao.addEventListener(
+                "click",
+                () => {
+                    const campo =
+                        document.getElementById(
+                            "agendamento-horario"
+                        );
+
+                    if (campo) {
+                        campo.value =
+                            botao.textContent;
+                    }
+                }
+            );
+
+            lista.appendChild(botao);
+        });
+
+    } catch (erro) {
+        console.error(
+            "Erro ao verificar disponibilidade:",
+            erro
         );
 
-    if (lista) {
-        lista.innerHTML = "";
+        lista.innerHTML =
+            "<p>Erro ao verificar disponibilidade.</p>";
     }
 }
 
-/* =========================================================
-   CLIENTE
-========================================================= */
+// ============================================================
+// AGENDAMENTOS DO CLIENTE
+// ============================================================
 
 async function carregarAgendamentosCliente() {
-    const tbody =
+    const tabela =
         document.getElementById(
             "lista-agendamentos"
         );
 
-    if (!tbody) return;
+    if (!tabela) return;
 
     try {
+        const clientes =
+            await request("/clientes");
 
-        const nomeUsuario =
-            localStorage.getItem("nome");
+        let usuario = null;
 
-        const telefoneUsuario =
-            localStorage.getItem("telefone");
-
-        if (!nomeUsuario || !telefoneUsuario) {
-
-            tbody.innerHTML =
-                criarLinhaVazia(
-                    7,
-                    "Usuário não identificado. Faça login novamente."
-                );
-
-            return;
+        try {
+            usuario = JSON.parse(
+                localStorage.getItem(
+                    "usuario"
+                ) || "null"
+            );
+        } catch {
+            usuario = null;
         }
 
-        /* Descobre o cliente logado */
+        const nome =
+            localStorage.getItem("nome") ||
+            usuario?.nome;
+
+        const telefone =
+            localStorage.getItem("telefone") ||
+            usuario?.telefone;
 
         const cliente =
-            await request(
-                `/cliente-logado?nome=${encodeURIComponent(nomeUsuario)}&telefone=${encodeURIComponent(telefoneUsuario)}`
-            );
+            clientes.find((c) => {
+                const mesmoNome =
+                    nome &&
+                    String(c.nome)
+                        .trim()
+                        .toLowerCase() ===
+                    String(nome)
+                        .trim()
+                        .toLowerCase();
+
+                const mesmoTelefone =
+                    telefone &&
+                    String(c.telefone)
+                        .replace(/\D/g, "") ===
+                    String(telefone)
+                        .replace(/\D/g, "");
+
+                return (
+                    mesmoTelefone ||
+                    mesmoNome
+                );
+            });
 
         if (!cliente) {
-
-            tbody.innerHTML =
-                criarLinhaVazia(
-                    7,
-                    "Cliente não encontrado."
-                );
-
-            return;
-        }
-
-        const clienteId =
-            cliente.id_clientes ||
-            cliente.id_cliente ||
-            cliente.cliente_id;
-
-        if (!clienteId) {
-
-            console.error(
-                "Resposta do cliente:",
-                cliente
+            criarLinhaVazia(
+                tabela,
+                7,
+                "Nenhum agendamento encontrado."
             );
 
-            tbody.innerHTML =
-                criarLinhaVazia(
-                    7,
-                    "Não foi possível identificar seu cadastro."
-                );
-
             return;
         }
-
-        /* Busca os agendamentos */
 
         const agendamentos =
             await request("/agendamentos");
 
-        /* Mostra somente os agendamentos desse cliente */
-
         const meusAgendamentos =
-            agendamentos.filter(item =>
-                Number(
-                    item.clientes_id_clientes
-                ) === Number(clienteId)
+            agendamentos.filter(
+                (item) =>
+                    Number(
+                        item.clientes_id_clientes
+                    ) ===
+                    Number(
+                        cliente.id_clientes
+                    )
             );
 
-        if (!meusAgendamentos.length) {
+        limparElemento(tabela);
 
-            tbody.innerHTML =
-                criarLinhaVazia(
-                    7,
-                    "Você ainda não possui agendamentos."
-                );
+        if (!meusAgendamentos.length) {
+            criarLinhaVazia(
+                tabela,
+                7,
+                "Você ainda não possui agendamentos."
+            );
 
             return;
         }
 
-        tbody.innerHTML =
-            meusAgendamentos.map(item => `
-                <tr>
+        meusAgendamentos.forEach((item) => {
+            const tr =
+                document.createElement("tr");
 
-                    <td>
-                        ${item.id_agendamentos ?? ""}
-                    </td>
+            const servico =
+                item.servico ||
+                item.nome_servico ||
+                item.tipo ||
+                "Serviço";
 
-                    <td>
-                        ${formatarData(item.data)}
-                    </td>
+            const barba =
+                item.servico_barba ||
+                item.barba ||
+                "";
 
-                    <td>
-                        ${item.horario ?? ""}
-                    </td>
+            const textoServico =
+                barba
+                    ? `${escaparHTML(servico)} + ${escaparHTML(barba)}`
+                    : escaparHTML(servico);
 
-                    <td>
-                        ${item.cliente ?? nomeUsuario}
-                    </td>
+            tr.innerHTML = `
+                <td>
+                    ${formatarData(item.data)}
+                </td>
 
-                    <td>
-                        ${item.servico ?? ""}
-                    </td>
+                <td>
+                    ${escaparHTML(
+                        String(
+                            item.horario || ""
+                        ).slice(0, 5)
+                    )}
+                </td>
 
-                    <td>
-                        ${item.funcionario ?? ""}
-                    </td>
+                <td>
+                    ${textoServico}
+                </td>
 
-                    <td>
-                        <div class="acoes">
+                <td>
+                    ${escaparHTML(
+                        item.funcionario ||
+                        item.nome_funcionario ||
+                        ""
+                    )}
+                </td>
 
-                            <button
-                                type="button"
-                                onclick='editarAgendamento(${JSON.stringify(item)})'
-                            >
-                                Editar
-                            </button>
+                <td>
+                    ${escaparHTML(
+                        item.metodo_pagamento ||
+                        ""
+                    )}
+                </td>
 
-                            <button
-                                type="button"
-                                class="perigo"
-                                onclick="excluirAgendamento(${item.id_agendamentos})"
-                            >
-                                Cancelar
-                            </button>
+                <td>
+                    ${escaparHTML(
+                        item.status_pagamento ||
+                        "pendente"
+                    )}
+                </td>
 
-                        </div>
-                    </td>
+                <td>
+                    <button
+                        type="button"
+                        onclick="editarAgendamento(${item.id_agendamentos})"
+                    >
+                        Editar
+                    </button>
 
-                </tr>
-            `).join("");
+                    <button
+                        type="button"
+                        onclick="excluirAgendamento(${item.id_agendamentos})"
+                    >
+                        Cancelar
+                    </button>
+                </td>
+            `;
 
-    } catch (error) {
+            tabela.appendChild(tr);
+        });
 
+    } catch (erro) {
         console.error(
-            "Erro ao carregar meus agendamentos:",
-            error
+            "Erro ao carregar agendamentos do cliente:",
+            erro
         );
 
-        tbody.innerHTML =
-            criarLinhaVazia(
-                7,
-                error.message
-            );
+        criarLinhaVazia(
+            tabela,
+            7,
+            "Erro ao carregar seus agendamentos."
+        );
     }
 }
 
-async function iniciarCliente() {
+// ============================================================
+// CLIENTE
+// ============================================================
+
+function iniciarCliente() {
+    // CARREGA OS AGENDAMENTOS DO CLIENTE
+    carregarAgendamentosCliente();
+
+    // CARREGA FUNCIONÁRIOS E SERVIÇOS
+    carregarSelectsAgendamento();
+
+    // IMPORTANTE:
+    // antes essa função não era chamada no cliente
     configurarFormularioAgendamentos();
 
-    await carregarSelectsAgendamento();
-    await carregarAgendamentosCliente();
+    const btnDisponibilidade =
+        document.getElementById(
+            "verificar-disponibilidade"
+        );
+
+    if (btnDisponibilidade) {
+        btnDisponibilidade.addEventListener(
+            "click",
+            (event) => {
+                event.preventDefault();
+                verificarDisponibilidade();
+            }
+        );
+    }
 }
 
-/* =========================================================
-   TEMA
-========================================================= */
+// ============================================================
+// CRUD CLIENTES
+// ============================================================
 
-function configurarTema() {
-    const botao =
-        document.getElementById("tema");
-
-    if (!botao) {
+async function excluirCliente(id) {
+    if (
+        !confirm(
+            "Tem certeza que deseja excluir este cliente?"
+        )
+    ) {
         return;
     }
+
+    try {
+        await request(
+            `/clientes/${id}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        alert(
+            "Cliente excluído com sucesso!"
+        );
+
+        carregarClientesDashboard();
+
+    } catch (erro) {
+        console.error(
+            "Erro ao excluir cliente:",
+            erro
+        );
+
+        alert(
+            erro.message ||
+            "Erro ao excluir cliente."
+        );
+    }
+}
+
+function editarCliente(id) {
+    alert(
+        `Edição do cliente ${id} será adicionada ao formulário do dashboard.`
+    );
+}
+
+// ============================================================
+// CRUD FUNCIONÁRIOS
+// ============================================================
+
+async function excluirFuncionario(id) {
+    if (
+        !confirm(
+            "Tem certeza que deseja excluir este funcionário?"
+        )
+    ) {
+        return;
+    }
+
+    try {
+        await request(
+            `/funcionarios/${id}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        alert(
+            "Funcionário excluído com sucesso!"
+        );
+
+        carregarFuncionariosDashboard();
+        carregarSelectsAgendamento();
+
+    } catch (erro) {
+        console.error(
+            "Erro ao excluir funcionário:",
+            erro
+        );
+
+        alert(
+            erro.message ||
+            "Erro ao excluir funcionário."
+        );
+    }
+}
+
+function editarFuncionario(id) {
+    alert(
+        `Edição do funcionário ${id} será adicionada ao formulário do dashboard.`
+    );
+}
+
+// ============================================================
+// CRUD SERVIÇOS
+// ============================================================
+
+async function excluirServico(id) {
+    if (
+        !confirm(
+            "Tem certeza que deseja excluir este serviço?"
+        )
+    ) {
+        return;
+    }
+
+    try {
+        await request(
+            `/servicos/${id}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        alert(
+            "Serviço excluído com sucesso!"
+        );
+
+        carregarServicosDashboard();
+        carregarSelectsAgendamento();
+
+    } catch (erro) {
+        console.error(
+            "Erro ao excluir serviço:",
+            erro
+        );
+
+        alert(
+            erro.message ||
+            "Erro ao excluir serviço."
+        );
+    }
+}
+
+function editarServico(id) {
+    alert(
+        `Edição do serviço ${id} será adicionada ao formulário do dashboard.`
+    );
+}
+
+// ============================================================
+// TEMA
+// ============================================================
+
+function configurarTema() {
+    const botoesTema =
+        document.querySelectorAll(
+            "#toggle-tema, #btn-tema, .btn-tema"
+        );
+
+    if (!botoesTema.length) return;
 
     const temaSalvo =
         localStorage.getItem("tema");
 
-    if (
-        temaSalvo === "dark" ||
-        temaSalvo === "escuro"
-    ) {
-
+    if (temaSalvo === "dark") {
         document.body.classList.add("dark");
-        document.body.classList.remove("light");
-
-        botao.textContent = "☀️";
-
     } else {
-
         document.body.classList.remove("dark");
-        document.body.classList.remove("light");
-
-        botao.textContent = "🌙";
     }
 
-    botao.addEventListener(
-        "click",
-        () => {
-
-            document.body.classList.toggle(
+    function atualizarIcone() {
+        const escuro =
+            document.body.classList.contains(
                 "dark"
             );
 
-            const estaEscuro =
-                document.body.classList.contains(
-                    "dark"
-                );
+        botoesTema.forEach((botao) => {
+            botao.textContent =
+                escuro ? "☀️" : "🌙";
 
-            if (estaEscuro) {
+            botao.setAttribute(
+                "aria-label",
+                escuro
+                    ? "Ativar modo claro"
+                    : "Ativar modo escuro"
+            );
+
+            botao.setAttribute(
+                "title",
+                escuro
+                    ? "Modo claro"
+                    : "Modo escuro"
+            );
+        });
+    }
+
+    atualizarIcone();
+
+    botoesTema.forEach((botao) => {
+        botao.addEventListener(
+            "click",
+            () => {
+                const escuro =
+                    document.body.classList.toggle(
+                        "dark"
+                    );
 
                 localStorage.setItem(
                     "tema",
-                    "dark"
+                    escuro
+                        ? "dark"
+                        : "light"
                 );
 
-                botao.textContent = "☀️";
-
-            } else {
-
-                localStorage.setItem(
-                    "tema",
-                    "light"
-                );
-
-                botao.textContent = "🌙";
+                atualizarIcone();
             }
-        }
-    );
+        );
+    });
 }
+
+// ============================================================
+// EXPOR FUNÇÕES PARA O HTML
+// ============================================================
+
+window.editarCliente =
+    editarCliente;
+
+window.excluirCliente =
+    excluirCliente;
+
+window.editarFuncionario =
+    editarFuncionario;
+
+window.excluirFuncionario =
+    excluirFuncionario;
+
+window.editarServico =
+    editarServico;
+
+window.excluirServico =
+    excluirServico;
+
+window.editarAgendamento =
+    editarAgendamento;
+
+window.excluirAgendamento =
+    excluirAgendamento;
+
+window.selecionarServico =
+    selecionarServico;
+
+window.selecionarNenhumaBarba =
+    selecionarNenhumaBarba;
+
+window.salvarAgendamento =
+    salvarAgendamento;
+
+window.resetarFormularioAgendamento =
+    resetarFormularioAgendamento;
+
+window.verificarDisponibilidade =
+    verificarDisponibilidade;
+
+window.sair =
+    sair;
