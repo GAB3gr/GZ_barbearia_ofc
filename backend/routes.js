@@ -2,754 +2,254 @@ const express = require("express");
 const router = express.Router();
 const db = require("./db");
 
-
-// ======================================================
-// FUNÇÃO DE ERRO
-// ======================================================
+// =====================================================
+// FUNÇÃO PADRÃO PARA ERROS
+// =====================================================
 
 const erro500 = (res, error) => {
     console.error(error);
 
     res.status(500).json({
-        erro: error.message || "Erro interno do servidor"
+        erro: error.message
     });
 };
 
+// =====================================================
+// FUNÇÕES GENÉRICAS
+// =====================================================
 
-// ======================================================
-// FUNÇÕES AUXILIARES
-// ======================================================
-
-async function listar(res, tabela) {
+const listar = (tabela) => async (req, res) => {
     try {
-        const result = await db.query(
-            `SELECT * FROM ${tabela}`
-        );
-
+        const result = await db.query(`SELECT * FROM ${tabela}`);
         res.json(result.rows);
-
     } catch (error) {
         erro500(res, error);
     }
-}
+};
 
-
-async function criar(req, res, tabela, campos) {
+const criar = (tabela, campos) => async (req, res) => {
     try {
+        const valores = campos.map(campo => req.body[campo]);
 
-        const valores = campos.map(
-            campo => req.body[campo]
-        );
-
-        if (
-            valores.some(
-                valor =>
-                    valor === undefined ||
-                    valor === null ||
-                    valor === ""
-            )
-        ) {
-            return res.status(400).json({
-                erro: "Preencha todos os campos"
-            });
-        }
-
-        const parametros = campos
+        const placeholders = valores
             .map((_, index) => `$${index + 1}`)
-            .join(", ");
-
-        const sql = `
-            INSERT INTO ${tabela}
-            (${campos.join(", ")})
-            VALUES (${parametros})
-            RETURNING *
-        `;
+            .join(",");
 
         const result = await db.query(
-            sql,
+            `
+            INSERT INTO ${tabela} (${campos.join(",")})
+            VALUES (${placeholders})
+            RETURNING *
+            `,
             valores
         );
 
-        const registro = result.rows[0];
-
-        const id =
-            registro.id_clientes ??
-            registro.id_funcionarios ??
-            registro.id_servico ??
-            registro.id_usuario ??
-            registro.id_agendamentos;
-
-        res.status(201).json({
-            mensagem: "Criado com sucesso",
-            id,
-            registro
-        });
+        res.status(201).json(result.rows[0]);
 
     } catch (error) {
         erro500(res, error);
     }
-}
+};
 
-
-async function atualizar(
-    req,
-    res,
-    tabela,
-    idCampo,
-    campos
-) {
+const atualizar = (tabela, campos, chave) => async (req, res) => {
     try {
+        const valores = campos.map(campo => req.body[campo]);
 
-        const { id } = req.params;
+        const sets = campos
+            .map((campo, index) => `${campo} = $${index + 1}`)
+            .join(",");
 
-        const valores = campos.map(
-            campo => req.body[campo]
+        valores.push(req.params.id);
+
+        const result = await db.query(
+            `
+            UPDATE ${tabela}
+            SET ${sets}
+            WHERE ${chave} = $${valores.length}
+            RETURNING *
+            `,
+            valores
         );
 
-        if (
-            valores.some(
-                valor =>
-                    valor === undefined ||
-                    valor === null ||
-                    valor === ""
-            )
-        ) {
-            return res.status(400).json({
-                erro: "Preencha todos os campos"
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Registro não encontrado"
             });
         }
 
-        const sets = campos
-            .map(
-                (campo, index) =>
-                    `${campo} = $${index + 1}`
-            )
-            .join(", ");
+        res.json(result.rows[0]);
 
-        const sql = `
-            UPDATE ${tabela}
-            SET ${sets}
-            WHERE ${idCampo} = $${campos.length + 1}
-            RETURNING *
-        `;
+    } catch (error) {
+        erro500(res, error);
+    }
+};
 
+const remover = (tabela, chave) => async (req, res) => {
+    try {
         const result = await db.query(
-            sql,
-            [...valores, id]
+            `
+            DELETE FROM ${tabela}
+            WHERE ${chave} = $1
+            RETURNING *
+            `,
+            [req.params.id]
         );
 
-        if (result.rowCount === 0) {
+        if (result.rows.length === 0) {
             return res.status(404).json({
                 erro: "Registro não encontrado"
             });
         }
 
         res.json({
-            mensagem: "Atualizado com sucesso",
-            registro: result.rows[0]
+            mensagem: "Registro removido com sucesso"
         });
 
     } catch (error) {
         erro500(res, error);
     }
-}
+};
 
-
-async function remover(
-    req,
-    res,
-    tabela,
-    idCampo,
-    nome = "Registro"
-) {
-    try {
-
-        const { id } = req.params;
-
-        const result = await db.query(
-            `
-            DELETE FROM ${tabela}
-            WHERE ${idCampo} = $1
-            `,
-            [id]
-        );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({
-                erro: `${nome} não encontrado`
-            });
-        }
-
-        res.json({
-            mensagem: `${nome} removido com sucesso`
-        });
-
-    } catch (error) {
-
-        console.error(error);
-
-        // Erro de chave estrangeira
-        if (error.code === "23503") {
-            return res.status(409).json({
-                erro:
-                    `Não é possível excluir este registro porque ele está sendo utilizado em outro cadastro.`
-            });
-        }
-
-        erro500(res, error);
-    }
-}
-
-
-// ======================================================
+// =====================================================
 // CLIENTES
-// ======================================================
+// =====================================================
 
-router.get("/clientes", async (req, res) => {
-    try {
+router.get("/clientes", listar("clientes"));
 
-        const result = await db.query(`
-            SELECT *
-            FROM clientes
-            ORDER BY id_clientes
-        `);
+router.post(
+    "/clientes",
+    criar("clientes", [
+        "nome",
+        "email",
+        "senha",
+        "telefone"
+    ])
+);
 
-        res.json(result.rows);
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.post("/clientes", async (req, res) => {
-
-    try {
-
-        const {
-            nome,
-            telefone
-        } = req.body;
-
-        if (!nome || !telefone) {
-            return res.status(400).json({
-                erro: "Nome e telefone são obrigatórios"
-            });
-        }
-
-        const existente = await db.query(
-            `
-            SELECT *
-            FROM clientes
-            WHERE telefone = $1
-            `,
-            [telefone]
-        );
-
-        if (existente.rows.length > 0) {
-            return res.status(409).json({
-                erro: "Já existe um cliente com esse telefone"
-            });
-        }
-
-        const result = await db.query(
-            `
-            INSERT INTO clientes
-            (nome, telefone)
-            VALUES ($1, $2)
-            RETURNING *
-            `,
-            [
-                nome.trim(),
-                telefone.trim()
-            ]
-        );
-
-        res.status(201).json({
-            mensagem: "Cliente criado com sucesso",
-            id_clientes:
-                result.rows[0].id_clientes,
-            cliente: result.rows[0]
-        });
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.put("/clientes/:id", async (req, res) => {
-
-    try {
-
-        const { id } = req.params;
-
-        const {
-            nome,
-            telefone
-        } = req.body;
-
-        if (!nome || !telefone) {
-            return res.status(400).json({
-                erro: "Nome e telefone são obrigatórios"
-            });
-        }
-
-        const result = await db.query(
-            `
-            UPDATE clientes
-            SET
-                nome = $1,
-                telefone = $2
-            WHERE id_clientes = $3
-            RETURNING *
-            `,
-            [
-                nome.trim(),
-                telefone.trim(),
-                id
-            ]
-        );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({
-                erro: "Cliente não encontrado"
-            });
-        }
-
-        res.json({
-            mensagem: "Cliente atualizado com sucesso",
-            cliente: result.rows[0]
-        });
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.delete("/clientes/:id", (req, res) =>
-    remover(
-        req,
-        res,
+router.put(
+    "/clientes/:id",
+    atualizar(
         "clientes",
-        "id_clientes",
-        "Cliente"
+        [
+            "nome",
+            "email",
+            "senha",
+            "telefone"
+        ],
+        "id_clientes"
     )
 );
 
+router.delete(
+    "/clientes/:id",
+    remover("clientes", "id_clientes")
+);
 
-// ======================================================
+// =====================================================
 // FUNCIONÁRIOS
-// ======================================================
+// =====================================================
 
-router.get("/funcionarios", async (req, res) => {
+router.get("/funcionarios", listar("funcionarios"));
 
-    try {
+router.post(
+    "/funcionarios",
+    criar("funcionarios", [
+        "nome",
+        "email",
+        "senha"
+    ])
+);
 
-        const result = await db.query(`
-            SELECT *
-            FROM funcionarios
-            ORDER BY id_funcionarios
-        `);
-
-        res.json(result.rows);
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.post("/funcionarios", async (req, res) => {
-
-    try {
-
-        const {
-            nome,
-            telefone
-        } = req.body;
-
-        if (!nome || !telefone) {
-            return res.status(400).json({
-                erro: "Nome e telefone são obrigatórios"
-            });
-        }
-
-        const result = await db.query(
-            `
-            INSERT INTO funcionarios
-            (nome, telefone)
-            VALUES ($1, $2)
-            RETURNING *
-            `,
-            [
-                nome.trim(),
-                telefone.trim()
-            ]
-        );
-
-        res.status(201).json({
-            mensagem:
-                "Funcionário criado com sucesso",
-
-            id_funcionarios:
-                result.rows[0].id_funcionarios,
-
-            funcionario:
-                result.rows[0]
-        });
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.put("/funcionarios/:id", async (req, res) => {
-
-    try {
-
-        const { id } = req.params;
-
-        const {
-            nome,
-            telefone
-        } = req.body;
-
-        if (!nome || !telefone) {
-            return res.status(400).json({
-                erro: "Nome e telefone são obrigatórios"
-            });
-        }
-
-        const result = await db.query(
-            `
-            UPDATE funcionarios
-            SET
-                nome = $1,
-                telefone = $2
-            WHERE id_funcionarios = $3
-            RETURNING *
-            `,
-            [
-                nome.trim(),
-                telefone.trim(),
-                id
-            ]
-        );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({
-                erro: "Funcionário não encontrado"
-            });
-        }
-
-        res.json({
-            mensagem:
-                "Funcionário atualizado com sucesso",
-
-            funcionario:
-                result.rows[0]
-        });
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.delete("/funcionarios/:id", (req, res) =>
-    remover(
-        req,
-        res,
+router.put(
+    "/funcionarios/:id",
+    atualizar(
         "funcionarios",
-        "id_funcionarios",
-        "Funcionário"
+        [
+            "nome",
+            "email",
+            "senha"
+        ],
+        "id_funcionarios"
     )
 );
 
+router.delete(
+    "/funcionarios/:id",
+    remover("funcionarios", "id_funcionarios")
+);
 
-// ======================================================
+// =====================================================
 // SERVIÇOS
-// ======================================================
+// =====================================================
 
-router.get("/servicos", async (req, res) => {
+router.get("/servicos", listar("servico"));
 
-    try {
+router.post(
+    "/servicos",
+    criar("servico", [
+        "tipo",
+        "preco",
+        "imagem"
+    ])
+);
 
-        const result = await db.query(`
-            SELECT
-                id_servico,
-                tipo,
-                imagem,
-                preco
-            FROM servico
-            ORDER BY id_servico
-        `);
-
-        const servicos = result.rows.map(servico => {
-
-            const texto =
-                String(servico.tipo || "")
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "")
-                    .toLowerCase();
-
-            let categoria = "Corte";
-
-            if (texto.includes("barba")) {
-                categoria = "Barba";
-            }
-
-            return {
-                ...servico,
-                categoria
-            };
-        });
-
-        res.json(servicos);
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-// ------------------------------------------------------
-// CRIAR SERVIÇO
-// ------------------------------------------------------
-
-router.post("/servicos", async (req, res) => {
-
-    try {
-
-        const {
-            tipo,
-            imagem,
-            preco
-        } = req.body;
-
-        if (!tipo) {
-            return res.status(400).json({
-                erro: "Informe o nome do serviço"
-            });
-        }
-
-        if (
-            preco === undefined ||
-            preco === null ||
-            preco === ""
-        ) {
-            return res.status(400).json({
-                erro: "Informe o preço do serviço"
-            });
-        }
-
-        const precoNumero =
-            Number(preco);
-
-        if (
-            Number.isNaN(precoNumero) ||
-            precoNumero < 0
-        ) {
-            return res.status(400).json({
-                erro: "Preço inválido"
-            });
-        }
-
-        const result = await db.query(
-            `
-            INSERT INTO servico
-            (
-                tipo,
-                imagem,
-                preco
-            )
-            VALUES
-            ($1, $2, $3)
-            RETURNING *
-            `,
-            [
-                tipo.trim(),
-                imagem
-                    ? imagem.trim()
-                    : null,
-                precoNumero
-            ]
-        );
-
-        res.status(201).json({
-            mensagem:
-                "Serviço criado com sucesso",
-
-            id_servico:
-                result.rows[0].id_servico,
-
-            servico:
-                result.rows[0]
-        });
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-// ------------------------------------------------------
-// EDITAR SERVIÇO
-// ------------------------------------------------------
-
-router.put("/servicos/:id", async (req, res) => {
-
-    try {
-
-        const { id } = req.params;
-
-        const {
-            tipo,
-            imagem,
-            preco
-        } = req.body;
-
-        if (!tipo) {
-            return res.status(400).json({
-                erro: "Informe o nome do serviço"
-            });
-        }
-
-        if (
-            preco === undefined ||
-            preco === null ||
-            preco === ""
-        ) {
-            return res.status(400).json({
-                erro: "Informe o preço do serviço"
-            });
-        }
-
-        const precoNumero =
-            Number(preco);
-
-        if (
-            Number.isNaN(precoNumero) ||
-            precoNumero < 0
-        ) {
-            return res.status(400).json({
-                erro: "Preço inválido"
-            });
-        }
-
-        const result = await db.query(
-            `
-            UPDATE servico
-            SET
-                tipo = $1,
-                imagem = $2,
-                preco = $3
-            WHERE id_servico = $4
-            RETURNING *
-            `,
-            [
-                tipo.trim(),
-                imagem
-                    ? imagem.trim()
-                    : null,
-                precoNumero,
-                id
-            ]
-        );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({
-                erro: "Serviço não encontrado"
-            });
-        }
-
-        res.json({
-            mensagem:
-                "Serviço atualizado com sucesso",
-
-            servico:
-                result.rows[0]
-        });
-
-    } catch (error) {
-        erro500(res, error);
-    }
-});
-
-
-router.delete("/servicos/:id", (req, res) =>
-    remover(
-        req,
-        res,
+router.put(
+    "/servicos/:id",
+    atualizar(
         "servico",
-        "id_servico",
-        "Serviço"
+        [
+            "tipo",
+            "preco",
+            "imagem"
+        ],
+        "id_servico"
     )
 );
 
+router.delete(
+    "/servicos/:id",
+    remover("servico", "id_servico")
+);
 
-// ======================================================
+// =====================================================
 // AGENDAMENTOS - LISTAR
-// ======================================================
+// =====================================================
 
 router.get("/agendamentos", async (req, res) => {
-
     try {
-
         const result = await db.query(`
             SELECT
                 a.id_agendamentos,
                 a.data,
                 a.horario,
-
                 a.clientes_id_clientes,
-
                 a.servico_id_servico,
                 a.servico_barba_id_servico,
-
                 a.funcionarios_id_funcionarios,
-
-                a.preco,
-
+                a.valor,
                 a.metodo_pagamento,
                 a.status_pagamento,
 
                 c.nome AS cliente,
-
                 s.tipo AS servico,
-
                 sb.tipo AS barba,
-
                 f.nome AS funcionario
 
             FROM agendamentos a
 
             INNER JOIN clientes c
-                ON
-                    a.clientes_id_clientes =
-                    c.id_clientes
+                ON a.clientes_id_clientes = c.id_clientes
 
             INNER JOIN servico s
-                ON
-                    a.servico_id_servico =
-                    s.id_servico
+                ON a.servico_id_servico = s.id_servico
 
             LEFT JOIN servico sb
-                ON
-                    a.servico_barba_id_servico =
-                    sb.id_servico
+                ON a.servico_barba_id_servico = sb.id_servico
 
             INNER JOIN funcionarios f
-                ON
-                    a.funcionarios_id_funcionarios =
-                    f.id_funcionarios
+                ON a.funcionarios_id_funcionarios = f.id_funcionarios
 
-            ORDER BY
-                a.data,
-                a.horario
+            ORDER BY a.data, a.horario
         `);
 
         res.json(result.rows);
@@ -759,82 +259,55 @@ router.get("/agendamentos", async (req, res) => {
     }
 });
 
+// =====================================================
+// AGENDAMENTOS - VERIFICAR HORÁRIO
+// =====================================================
 
-// ======================================================
-// DISPONIBILIDADE
-// ======================================================
-
-router.get("/disponibilidade", async (req, res) => {
-
+router.get("/agendamentos/verificar", async (req, res) => {
     try {
-
         const {
             data,
-            funcionarioId,
-            agendamentoId
+            horario,
+            funcionarios_id_funcionarios
         } = req.query;
 
-        if (!data || !funcionarioId) {
+        if (!data || !horario || !funcionarios_id_funcionarios) {
             return res.status(400).json({
-                erro:
-                    "Informe data e funcionarioId"
+                erro: "Data, horário e funcionário são obrigatórios"
             });
         }
 
-        let sql = `
-            SELECT
-                id_agendamentos,
-                horario
+        const result = await db.query(
+            `
+            SELECT *
             FROM agendamentos
-            WHERE
-                data = $1
-                AND funcionarios_id_funcionarios = $2
-        `;
-
-        const parametros = [
-            data,
-            funcionarioId
-        ];
-
-        if (agendamentoId) {
-
-            sql += `
-                AND id_agendamentos <> $3
-            `;
-
-            parametros.push(
-                agendamentoId
-            );
-        }
-
-        sql += `
-            ORDER BY horario
-        `;
-
-        const result =
-            await db.query(
-                sql,
-                parametros
-            );
-
-        res.json(
-            result.rows
+            WHERE data = $1
+            AND horario = $2
+            AND funcionarios_id_funcionarios = $3
+            `,
+            [
+                data,
+                horario,
+                funcionarios_id_funcionarios
+            ]
         );
+
+        res.json({
+            disponivel: result.rows.length === 0,
+            agendamentos: result.rows
+        });
 
     } catch (error) {
         erro500(res, error);
     }
 });
 
-
-// ======================================================
-// CRIAR AGENDAMENTO
-// ======================================================
+// =====================================================
+// AGENDAMENTOS - CRIAR
+// =====================================================
 
 router.post("/agendamentos", async (req, res) => {
-
     try {
-
         const {
             data,
             horario,
@@ -846,10 +319,9 @@ router.post("/agendamentos", async (req, res) => {
             status_pagamento
         } = req.body;
 
-
-        // --------------------------------------------------
-        // CAMPOS OBRIGATÓRIOS
-        // --------------------------------------------------
+        // ---------------------------------------------
+        // VALIDAÇÃO DOS CAMPOS
+        // ---------------------------------------------
 
         if (
             !data ||
@@ -858,150 +330,139 @@ router.post("/agendamentos", async (req, res) => {
             !servico_id_servico ||
             !funcionarios_id_funcionarios
         ) {
-
             return res.status(400).json({
-                erro:
-                    "Preencha todos os campos obrigatórios"
+                erro: "Preencha todos os campos obrigatórios"
             });
         }
 
-
-        // --------------------------------------------------
+        // ---------------------------------------------
         // VALIDAR DATA
-        // --------------------------------------------------
+        // ---------------------------------------------
 
-        const dataObj =
-            new Date(`${data}T00:00:00`);
+        const dataObj = new Date(`${data}T00:00:00`);
 
-        if (Number.isNaN(dataObj.getTime())) {
-
+        if (isNaN(dataObj.getTime())) {
             return res.status(400).json({
                 erro: "Data inválida"
             });
         }
 
-
-        // --------------------------------------------------
-        // NÃO PERMITIR DOMINGO
-        // --------------------------------------------------
-
+        // Domingo
         if (dataObj.getDay() === 0) {
-
             return res.status(400).json({
-                erro:
-                    "A barbearia não funciona aos domingos"
+                erro: "A barbearia não funciona aos domingos"
             });
         }
 
-
-        // --------------------------------------------------
+        // ---------------------------------------------
         // VALIDAR HORÁRIO
-        // --------------------------------------------------
+        // ---------------------------------------------
 
-        const horarioRegex =
-            /^([01]\d|2[0-3]):([0-5]\d)$/;
+        const horarioRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
         if (!horarioRegex.test(horario)) {
-
             return res.status(400).json({
                 erro: "Horário inválido"
             });
         }
 
-        const [hora, minuto] =
-            horario
-                .split(":")
-                .map(Number);
+        const [hora, minuto] = horario.split(":").map(Number);
 
-        const minutosDoDia =
-            hora * 60 + minuto;
+        const minutosDoDia = hora * 60 + minuto;
 
+        const inicioManha = 7 * 60;
+        const fimManha = 11 * 60 + 30;
 
-        const manhaInicio =
-            7 * 60;
-
-        const manhaFim =
-            11 * 60 + 30;
-
-        const tardeInicio =
-            13 * 60;
-
-        const tardeFim =
-            19 * 60;
-
+        const inicioTarde = 13 * 60;
+        const fimTarde = 19 * 60;
 
         const horarioValido =
             (
-                minutosDoDia >= manhaInicio &&
-                minutosDoDia <= manhaFim
+                minutosDoDia >= inicioManha &&
+                minutosDoDia <= fimManha
             ) ||
             (
-                minutosDoDia >= tardeInicio &&
-                minutosDoDia <= tardeFim
+                minutosDoDia >= inicioTarde &&
+                minutosDoDia <= fimTarde
             );
 
-
         if (!horarioValido) {
-
             return res.status(400).json({
-                erro:
-                    "O horário deve estar entre 07:00–11:30 ou 13:00–19:00"
+                erro: "Horário fora do funcionamento da barbearia"
             });
         }
 
-
-        // --------------------------------------------------
+        // ---------------------------------------------
         // VERIFICAR CLIENTE
-        // --------------------------------------------------
+        // ---------------------------------------------
 
-        const cliente =
-            await db.query(
-                `
-                SELECT id_clientes
-                FROM clientes
-                WHERE id_clientes = $1
-                `,
-                [clientes_id_clientes]
-            );
+        const cliente = await db.query(
+            `
+            SELECT *
+            FROM clientes
+            WHERE id_clientes = $1
+            `,
+            [clientes_id_clientes]
+        );
 
         if (cliente.rows.length === 0) {
-
             return res.status(404).json({
-                erro:
-                    "Cliente não encontrado"
+                erro: "Cliente não encontrado"
             });
         }
 
-
-        // --------------------------------------------------
+        // ---------------------------------------------
         // VERIFICAR FUNCIONÁRIO
-        // --------------------------------------------------
+        // ---------------------------------------------
 
-        const funcionario =
-            await db.query(
-                `
-                SELECT id_funcionarios
-                FROM funcionarios
-                WHERE id_funcionarios = $1
-                `,
-                [funcionarios_id_funcionarios]
-            );
+        const funcionario = await db.query(
+            `
+            SELECT *
+            FROM funcionarios
+            WHERE id_funcionarios = $1
+            `,
+            [funcionarios_id_funcionarios]
+        );
 
         if (funcionario.rows.length === 0) {
-
             return res.status(404).json({
-                erro:
-                    "Funcionário não encontrado"
+                erro: "Funcionário não encontrado"
             });
         }
 
+        // ---------------------------------------------
+        // BUSCAR SERVIÇO PRINCIPAL
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // BUSCAR CORTE
-        // --------------------------------------------------
+        const servico = await db.query(
+            `
+            SELECT
+                id_servico,
+                tipo,
+                preco
+            FROM servico
+            WHERE id_servico = $1
+            `,
+            [servico_id_servico]
+        );
 
-        const corte =
-            await db.query(
+        if (servico.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Serviço não encontrado"
+            });
+        }
+
+        const precoCorte = Number(servico.rows[0].preco);
+
+        // ---------------------------------------------
+        // SERVIÇO DE BARBA
+        // ---------------------------------------------
+
+        let precoBarba = 0;
+
+        if (servico_barba_id_servico) {
+
+            const barba = await db.query(
                 `
                 SELECT
                     id_servico,
@@ -1010,282 +471,112 @@ router.post("/agendamentos", async (req, res) => {
                 FROM servico
                 WHERE id_servico = $1
                 `,
-                [servico_id_servico]
+                [servico_barba_id_servico]
             );
-
-
-        if (corte.rows.length === 0) {
-
-            return res.status(404).json({
-                erro:
-                    "Serviço de corte não encontrado"
-            });
-        }
-
-
-        const tipoCorte =
-            String(
-                corte.rows[0].tipo || ""
-            )
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .toLowerCase();
-
-
-        if (tipoCorte.includes("barba")) {
-
-            return res.status(400).json({
-                erro:
-                    "O serviço selecionado para corte é uma barba"
-            });
-        }
-
-
-        const precoCorte =
-            Number(
-                corte.rows[0].preco
-            ) || 0;
-
-
-        // --------------------------------------------------
-        // BUSCAR BARBA
-        // --------------------------------------------------
-
-        let precoBarba = 0;
-
-
-        if (servico_barba_id_servico) {
-
-            if (
-                Number(servico_barba_id_servico) ===
-                Number(servico_id_servico)
-            ) {
-
-                return res.status(400).json({
-                    erro:
-                        "O corte e a barba não podem ser o mesmo serviço"
-                });
-            }
-
-
-            const barba =
-                await db.query(
-                    `
-                    SELECT
-                        id_servico,
-                        tipo,
-                        preco
-                    FROM servico
-                    WHERE id_servico = $1
-                    `,
-                    [servico_barba_id_servico]
-                );
-
 
             if (barba.rows.length === 0) {
-
                 return res.status(404).json({
-                    erro:
-                        "Serviço de barba não encontrado"
+                    erro: "Serviço de barba não encontrado"
                 });
             }
 
-
-            const tipoBarba =
-                String(
-                    barba.rows[0].tipo || ""
-                )
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "")
-                    .toLowerCase();
-
+            const tipoBarba = barba.rows[0].tipo.toLowerCase();
 
             if (!tipoBarba.includes("barba")) {
-
                 return res.status(400).json({
-                    erro:
-                        "O serviço selecionado para barba não é uma barba"
+                    erro: "O serviço selecionado para barba não é um serviço de barba"
                 });
             }
 
-
-            precoBarba =
-                Number(
-                    barba.rows[0].preco
-                ) || 0;
+            precoBarba = Number(barba.rows[0].preco);
         }
 
+        // ---------------------------------------------
+        // CALCULAR PREÇO TOTAL
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // PREÇO TOTAL
-        // --------------------------------------------------
+        const preco = precoCorte + precoBarba;
 
-        const preco =
-            precoCorte + precoBarba;
+        // ---------------------------------------------
+        // VERIFICAR CONFLITO DE HORÁRIO
+        // ---------------------------------------------
 
+        const conflito = await db.query(
+            `
+            SELECT *
+            FROM agendamentos
+            WHERE data = $1
+            AND horario = $2
+            AND funcionarios_id_funcionarios = $3
+            `,
+            [
+                data,
+                horario,
+                funcionarios_id_funcionarios
+            ]
+        );
 
-        // --------------------------------------------------
-        // CONFLITO DE HORÁRIO
-        // --------------------------------------------------
-
-        const existe =
-            await db.query(
-                `
-                SELECT
-                    id_agendamentos
-                FROM agendamentos
-
-                WHERE
-                    data = $1
-
-                    AND horario = $2
-
-                    AND funcionarios_id_funcionarios = $3
-                `,
-                [
-                    data,
-                    horario,
-                    funcionarios_id_funcionarios
-                ]
-            );
-
-
-        if (existe.rows.length > 0) {
-
+        if (conflito.rows.length > 0) {
             return res.status(409).json({
-                erro:
-                    "Esse funcionário já possui agendamento nesse dia e horário"
+                erro: "Este funcionário já possui um agendamento neste horário"
             });
         }
 
+        // ---------------------------------------------
+        // INSERIR AGENDAMENTO
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // CRIAR
-        // --------------------------------------------------
-
-        const result =
-            await db.query(
-                `
-                INSERT INTO agendamentos
-                (
-                    data,
-                    horario,
-
-                    clientes_id_clientes,
-
-                    servico_id_servico,
-                    servico_barba_id_servico,
-
-                    funcionarios_id_funcionarios,
-
-                    preco,
-
-                    metodo_pagamento,
-                    status_pagamento
-                )
-
-                VALUES
-                (
-                    $1,
-                    $2,
-
-                    $3,
-
-                    $4,
-                    $5,
-
-                    $6,
-
-                    $7,
-
-                    $8,
-                    $9
-                )
-
-                RETURNING *
-                `,
-                [
-                    data,
-                    horario,
-
-                    clientes_id_clientes,
-
-                    servico_id_servico,
-
-                    servico_barba_id_servico
-                        ? Number(
-                            servico_barba_id_servico
-                        )
-                        : null,
-
-                    funcionarios_id_funcionarios,
-
-                    preco,
-
-                    metodo_pagamento || null,
-
-                    status_pagamento ||
-                        "pendente"
-                ]
-            );
-
-
-        // --------------------------------------------------
-        // RESPOSTA
-        // --------------------------------------------------
+        const result = await db.query(
+            `
+            INSERT INTO agendamentos
+            (
+                data,
+                horario,
+                clientes_id_clientes,
+                servico_id_servico,
+                servico_barba_id_servico,
+                funcionarios_id_funcionarios,
+                valor,
+                metodo_pagamento,
+                status_pagamento
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            RETURNING *
+            `,
+            [
+                data,
+                horario,
+                clientes_id_clientes,
+                servico_id_servico,
+                servico_barba_id_servico || null,
+                funcionarios_id_funcionarios,
+                preco,
+                metodo_pagamento || null,
+                status_pagamento || "pendente"
+            ]
+        );
 
         res.status(201).json({
-
-            mensagem:
-                "Agendamento criado com sucesso",
-
-            agendamento:
-                result.rows[0],
-
+            mensagem: "Agendamento criado com sucesso",
+            agendamento: result.rows[0],
             preco,
-
-            preco_corte:
-                precoCorte,
-
-            preco_barba:
-                precoBarba,
-
-            metodo_pagamento:
-                metodo_pagamento || null,
-
-            status_pagamento:
-                status_pagamento ||
-                "pendente"
+            preco_corte: precoCorte,
+            preco_barba: precoBarba,
+            metodo_pagamento: metodo_pagamento || null,
+            status_pagamento: status_pagamento || "pendente"
         });
 
-
     } catch (error) {
-
-        console.error(
-            "Erro ao criar agendamento:",
-            error
-        );
-
-        erro500(
-            res,
-            error
-        );
+        erro500(res, error);
     }
 });
 
-
-// ======================================================
-// ATUALIZAR AGENDAMENTO
-// ======================================================
+// =====================================================
+// AGENDAMENTOS - ATUALIZAR
+// =====================================================
 
 router.put("/agendamentos/:id", async (req, res) => {
-
     try {
-
-        const { id } =
-            req.params;
-
-
         const {
             data,
             horario,
@@ -1297,10 +588,9 @@ router.put("/agendamentos/:id", async (req, res) => {
             status_pagamento
         } = req.body;
 
-
-        // --------------------------------------------------
-        // CAMPOS
-        // --------------------------------------------------
+        // ---------------------------------------------
+        // VALIDAÇÃO
+        // ---------------------------------------------
 
         if (
             !data ||
@@ -1309,113 +599,138 @@ router.put("/agendamentos/:id", async (req, res) => {
             !servico_id_servico ||
             !funcionarios_id_funcionarios
         ) {
-
             return res.status(400).json({
-                erro:
-                    "Preencha todos os campos obrigatórios"
+                erro: "Preencha todos os campos obrigatórios"
             });
         }
 
+        // ---------------------------------------------
+        // VALIDAR DATA
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // VERIFICAR EXISTÊNCIA
-        // --------------------------------------------------
+        const dataObj = new Date(`${data}T00:00:00`);
 
-        const agendamento =
-            await db.query(
-                `
-                SELECT *
-                FROM agendamentos
-                WHERE id_agendamentos = $1
-                `,
-                [id]
-            );
-
-
-        if (agendamento.rows.length === 0) {
-
-            return res.status(404).json({
-                erro:
-                    "Agendamento não encontrado"
-            });
-        }
-
-
-        // --------------------------------------------------
-        // DATA
-        // --------------------------------------------------
-
-        const dataObj =
-            new Date(`${data}T00:00:00`);
-
-        if (Number.isNaN(dataObj.getTime())) {
-
+        if (isNaN(dataObj.getTime())) {
             return res.status(400).json({
                 erro: "Data inválida"
             });
         }
 
-
         if (dataObj.getDay() === 0) {
-
             return res.status(400).json({
-                erro:
-                    "A barbearia não funciona aos domingos"
+                erro: "A barbearia não funciona aos domingos"
             });
         }
 
+        // ---------------------------------------------
+        // VALIDAR HORÁRIO
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // HORÁRIO
-        // --------------------------------------------------
-
-        const horarioRegex =
-            /^([01]\d|2[0-3]):([0-5]\d)$/;
+        const horarioRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
         if (!horarioRegex.test(horario)) {
-
             return res.status(400).json({
                 erro: "Horário inválido"
             });
         }
 
+        const [hora, minuto] = horario.split(":").map(Number);
 
-        const [hora, minuto] =
-            horario
-                .split(":")
-                .map(Number);
+        const minutosDoDia = hora * 60 + minuto;
 
+        const inicioManha = 7 * 60;
+        const fimManha = 11 * 60 + 30;
 
-        const minutosDoDia =
-            hora * 60 + minuto;
-
+        const inicioTarde = 13 * 60;
+        const fimTarde = 19 * 60;
 
         const horarioValido =
             (
-                minutosDoDia >= 7 * 60 &&
-                minutosDoDia <= 11 * 60 + 30
+                minutosDoDia >= inicioManha &&
+                minutosDoDia <= fimManha
             ) ||
             (
-                minutosDoDia >= 13 * 60 &&
-                minutosDoDia <= 19 * 60
+                minutosDoDia >= inicioTarde &&
+                minutosDoDia <= fimTarde
             );
 
-
         if (!horarioValido) {
-
             return res.status(400).json({
-                erro:
-                    "O horário deve estar entre 07:00–11:30 ou 13:00–19:00"
+                erro: "Horário fora do funcionamento da barbearia"
             });
         }
 
+        // ---------------------------------------------
+        // VERIFICAR CLIENTE
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // CORTE
-        // --------------------------------------------------
+        const cliente = await db.query(
+            `
+            SELECT *
+            FROM clientes
+            WHERE id_clientes = $1
+            `,
+            [clientes_id_clientes]
+        );
 
-        const corte =
-            await db.query(
+        if (cliente.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Cliente não encontrado"
+            });
+        }
+
+        // ---------------------------------------------
+        // VERIFICAR FUNCIONÁRIO
+        // ---------------------------------------------
+
+        const funcionario = await db.query(
+            `
+            SELECT *
+            FROM funcionarios
+            WHERE id_funcionarios = $1
+            `,
+            [funcionarios_id_funcionarios]
+        );
+
+        if (funcionario.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Funcionário não encontrado"
+            });
+        }
+
+        // ---------------------------------------------
+        // BUSCAR SERVIÇO PRINCIPAL
+        // ---------------------------------------------
+
+        const servico = await db.query(
+            `
+            SELECT
+                id_servico,
+                tipo,
+                preco
+            FROM servico
+            WHERE id_servico = $1
+            `,
+            [servico_id_servico]
+        );
+
+        if (servico.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Serviço não encontrado"
+            });
+        }
+
+        const precoCorte = Number(servico.rows[0].preco);
+
+        // ---------------------------------------------
+        // SERVIÇO DE BARBA
+        // ---------------------------------------------
+
+        let precoBarba = 0;
+
+        if (servico_barba_id_servico) {
+
+            const barba = await db.query(
                 `
                 SELECT
                     id_servico,
@@ -1424,316 +739,205 @@ router.put("/agendamentos/:id", async (req, res) => {
                 FROM servico
                 WHERE id_servico = $1
                 `,
-                [servico_id_servico]
+                [servico_barba_id_servico]
             );
-
-
-        if (corte.rows.length === 0) {
-
-            return res.status(404).json({
-                erro:
-                    "Serviço de corte não encontrado"
-            });
-        }
-
-
-        const tipoCorte =
-            String(
-                corte.rows[0].tipo || ""
-            )
-                .normalize("NFD")
-                .replace(/[\u0300-\u036f]/g, "")
-                .toLowerCase();
-
-
-        if (tipoCorte.includes("barba")) {
-
-            return res.status(400).json({
-                erro:
-                    "O serviço selecionado para corte é uma barba"
-            });
-        }
-
-
-        const precoCorte =
-            Number(
-                corte.rows[0].preco
-            ) || 0;
-
-
-        // --------------------------------------------------
-        // BARBA
-        // --------------------------------------------------
-
-        let precoBarba = 0;
-
-
-        if (servico_barba_id_servico) {
-
-            if (
-                Number(servico_barba_id_servico) ===
-                Number(servico_id_servico)
-            ) {
-
-                return res.status(400).json({
-                    erro:
-                        "O corte e a barba não podem ser o mesmo serviço"
-                });
-            }
-
-
-            const barba =
-                await db.query(
-                    `
-                    SELECT
-                        id_servico,
-                        tipo,
-                        preco
-                    FROM servico
-                    WHERE id_servico = $1
-                    `,
-                    [servico_barba_id_servico]
-                );
-
 
             if (barba.rows.length === 0) {
-
                 return res.status(404).json({
-                    erro:
-                        "Serviço de barba não encontrado"
+                    erro: "Serviço de barba não encontrado"
                 });
             }
 
-
-            const tipoBarba =
-                String(
-                    barba.rows[0].tipo || ""
-                )
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "")
-                    .toLowerCase();
-
+            const tipoBarba = barba.rows[0].tipo.toLowerCase();
 
             if (!tipoBarba.includes("barba")) {
-
                 return res.status(400).json({
-                    erro:
-                        "O serviço selecionado para barba não é uma barba"
+                    erro: "O serviço selecionado para barba não é um serviço de barba"
                 });
             }
 
-
-            precoBarba =
-                Number(
-                    barba.rows[0].preco
-                ) || 0;
+            precoBarba = Number(barba.rows[0].preco);
         }
 
+        // ---------------------------------------------
+        // CALCULAR PREÇO TOTAL
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // TOTAL
-        // --------------------------------------------------
+        const preco = precoCorte + precoBarba;
 
-        const preco =
-            precoCorte + precoBarba;
+        // ---------------------------------------------
+        // VERIFICAR CONFLITO
+        // ---------------------------------------------
 
-
-        // --------------------------------------------------
-        // CONFLITO
-        // --------------------------------------------------
-
-        const conflito =
-            await db.query(
-                `
-                SELECT
-                    id_agendamentos
-                FROM agendamentos
-
-                WHERE
-                    data = $1
-
-                    AND horario = $2
-
-                    AND funcionarios_id_funcionarios = $3
-
-                    AND id_agendamentos <> $4
-                `,
-                [
-                    data,
-                    horario,
-                    funcionarios_id_funcionarios,
-                    id
-                ]
-            );
-
+        const conflito = await db.query(
+            `
+            SELECT *
+            FROM agendamentos
+            WHERE data = $1
+            AND horario = $2
+            AND funcionarios_id_funcionarios = $3
+            AND id_agendamentos != $4
+            `,
+            [
+                data,
+                horario,
+                funcionarios_id_funcionarios,
+                req.params.id
+            ]
+        );
 
         if (conflito.rows.length > 0) {
-
             return res.status(409).json({
-                erro:
-                    "Esse funcionário já possui agendamento nesse dia e horário"
+                erro: "Este funcionário já possui um agendamento neste horário"
             });
         }
 
+        // ---------------------------------------------
+        // ATUALIZAR AGENDAMENTO
+        // ---------------------------------------------
 
-        // --------------------------------------------------
-        // ATUALIZAR
-        // --------------------------------------------------
+        const result = await db.query(
+            `
+            UPDATE agendamentos
+            SET
+                data = $1,
+                horario = $2,
+                clientes_id_clientes = $3,
+                servico_id_servico = $4,
+                servico_barba_id_servico = $5,
+                funcionarios_id_funcionarios = $6,
+                valor = $7,
+                metodo_pagamento = $8,
+                status_pagamento = $9
+            WHERE id_agendamentos = $10
+            RETURNING *
+            `,
+            [
+                data,
+                horario,
+                clientes_id_clientes,
+                servico_id_servico,
+                servico_barba_id_servico || null,
+                funcionarios_id_funcionarios,
+                preco,
+                metodo_pagamento || null,
+                status_pagamento || "pendente",
+                req.params.id
+            ]
+        );
 
-        const result =
-            await db.query(
-                `
-                UPDATE agendamentos
-
-                SET
-
-                    data = $1,
-                    horario = $2,
-
-                    clientes_id_clientes = $3,
-
-                    servico_id_servico = $4,
-                    servico_barba_id_servico = $5,
-
-                    funcionarios_id_funcionarios = $6,
-
-                    preco = $7,
-
-                    metodo_pagamento = $8,
-                    status_pagamento = $9
-
-                WHERE
-                    id_agendamentos = $10
-
-                RETURNING *
-                `,
-                [
-                    data,
-                    horario,
-
-                    clientes_id_clientes,
-
-                    servico_id_servico,
-
-                    servico_barba_id_servico
-                        ? Number(
-                            servico_barba_id_servico
-                        )
-                        : null,
-
-                    funcionarios_id_funcionarios,
-
-                    preco,
-
-                    metodo_pagamento || null,
-
-                    status_pagamento ||
-                        "pendente",
-
-                    id
-                ]
-            );
-
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                erro: "Agendamento não encontrado"
+            });
+        }
 
         res.json({
-
-            mensagem:
-                "Agendamento atualizado com sucesso",
-
-            agendamento:
-                result.rows[0],
-
+            mensagem: "Agendamento atualizado com sucesso",
+            agendamento: result.rows[0],
             preco,
-
-            preco_corte:
-                precoCorte,
-
-            preco_barba:
-                precoBarba
+            preco_corte: precoCorte,
+            preco_barba: precoBarba,
+            metodo_pagamento: metodo_pagamento || null,
+            status_pagamento: status_pagamento || "pendente"
         });
 
-
     } catch (error) {
-
-        console.error(
-            "Erro ao atualizar agendamento:",
-            error
-        );
-
-        erro500(
-            res,
-            error
-        );
+        erro500(res, error);
     }
 });
 
-
-// ======================================================
-// REMOVER AGENDAMENTO
-// ======================================================
+// =====================================================
+// AGENDAMENTOS - DELETAR
+// =====================================================
 
 router.delete(
     "/agendamentos/:id",
-    async (req, res) => {
-
-        try {
-
-            const { id } =
-                req.params;
-
-
-            const result =
-                await db.query(
-                    `
-                    DELETE FROM agendamentos
-
-                    WHERE
-                        id_agendamentos = $1
-
-                    RETURNING id_agendamentos
-                    `,
-                    [id]
-                );
-
-
-            if (result.rowCount === 0) {
-
-                return res.status(404).json({
-                    erro:
-                        "Agendamento não encontrado"
-                });
-            }
-
-
-            res.json({
-
-                mensagem:
-                    "Agendamento removido com sucesso",
-
-                id_agendamentos:
-                    result.rows[0]
-                        .id_agendamentos
-            });
-
-
-        } catch (error) {
-
-            console.error(
-                "Erro ao remover agendamento:",
-                error
-            );
-
-            erro500(
-                res,
-                error
-            );
-        }
-    }
+    remover("agendamentos", "id_agendamentos")
 );
 
+// =====================================================
+// LOGIN
+// =====================================================
 
-// ======================================================
-// EXPORTAR
-// ======================================================
+router.post("/login", async (req, res) => {
+    try {
+        const {
+            email,
+            senha
+        } = req.body;
+
+        if (!email || !senha) {
+            return res.status(400).json({
+                erro: "Email e senha são obrigatórios"
+            });
+        }
+
+        // ---------------------------------------------
+        // TENTAR LOGIN COMO CLIENTE
+        // ---------------------------------------------
+
+        const cliente = await db.query(
+            `
+            SELECT *
+            FROM clientes
+            WHERE email = $1
+            AND senha = $2
+            `,
+            [
+                email,
+                senha
+            ]
+        );
+
+        if (cliente.rows.length > 0) {
+            return res.json({
+                mensagem: "Login realizado com sucesso",
+                tipo: "cliente",
+                usuario: cliente.rows[0]
+            });
+        }
+
+        // ---------------------------------------------
+        // TENTAR LOGIN COMO FUNCIONÁRIO
+        // ---------------------------------------------
+
+        const funcionario = await db.query(
+            `
+            SELECT *
+            FROM funcionarios
+            WHERE email = $1
+            AND senha = $2
+            `,
+            [
+                email,
+                senha
+            ]
+        );
+
+        if (funcionario.rows.length > 0) {
+            return res.json({
+                mensagem: "Login realizado com sucesso",
+                tipo: "adm",
+                usuario: funcionario.rows[0]
+            });
+        }
+
+        // ---------------------------------------------
+        // LOGIN INVÁLIDO
+        // ---------------------------------------------
+
+        return res.status(401).json({
+            erro: "Email ou senha incorretos"
+        });
+
+    } catch (error) {
+        erro500(res, error);
+    }
+});
+
+// =====================================================
+// EXPORTAR ROTAS
+// =====================================================
 
 module.exports = router;

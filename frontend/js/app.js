@@ -1,4 +1,8 @@
-const API_URL = "https://gz-barbearia-ofc-2.onrender.com";
+const API_URL =
+    (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1")
+        ? "http://localhost:3000"
+        : "https://gz-barbearia-ofc-2.onrender.com";
 
 document.addEventListener("DOMContentLoaded", () => {
     const page = document.body.dataset.page;
@@ -58,7 +62,9 @@ function formatarData(data) {
         .split("T")[0]
         .split("-");
 
-    if (partes.length !== 3) return data;
+    if (partes.length !== 3) {
+        return data;
+    }
 
     return `${partes[2]}/${partes[1]}/${partes[0]}`;
 }
@@ -74,6 +80,8 @@ function criarLinhaVazia(
     colunas,
     mensagem = "Nenhum registro encontrado."
 ) {
+    if (!tbody) return;
+
     tbody.innerHTML = `
         <tr>
             <td colspan="${colunas}" style="text-align:center;">
@@ -130,6 +138,121 @@ function normalizarTipo(tipo) {
 }
 
 // ============================================================
+// NOME DO USUÁRIO
+// ============================================================
+
+function obterUsuarioLogado() {
+    let usuario = null;
+
+    try {
+        usuario = JSON.parse(
+            localStorage.getItem("usuario") || "null"
+        );
+    } catch {
+        usuario = null;
+    }
+
+    return usuario;
+}
+
+function obterNomeUsuario() {
+    const usuario = obterUsuarioLogado();
+
+    return (
+        localStorage.getItem("nome") ||
+        usuario?.nome ||
+        usuario?.nome_usuario ||
+        "Cliente"
+    );
+}
+
+function carregarNomeUsuario() {
+    const nome = obterNomeUsuario();
+
+    // Tenta encontrar um elemento já existente
+    const elemento =
+        document.getElementById("nome-usuario") ||
+        document.querySelector(".nome-usuario") ||
+        document.querySelector("[data-nome-usuario]");
+
+    if (elemento) {
+        elemento.textContent = nome;
+        return;
+    }
+
+    /*
+     * Caso o HTML não tenha um elemento específico para o nome,
+     * tenta criar automaticamente no cabeçalho.
+     */
+    const header =
+        document.querySelector("header") ||
+        document.querySelector(".header") ||
+        document.querySelector("nav") ||
+        document.querySelector(".navbar");
+
+    if (header) {
+        const nomeElemento = document.createElement("span");
+
+        nomeElemento.id = "nome-usuario";
+        nomeElemento.className = "nome-usuario";
+        nomeElemento.textContent = nome;
+
+        nomeElemento.style.marginRight = "15px";
+
+        header.prepend(nomeElemento);
+    }
+}
+
+// ============================================================
+// NAVEGAÇÃO DO CLIENTE
+// ============================================================
+
+function configurarNavegacaoCliente() {
+    const botoesAgendar = document.querySelectorAll(
+        "#btn-agendar-menu, #btn-agendar-nav, .btn-agendar-menu, [data-action='agendar']"
+    );
+
+    botoesAgendar.forEach(botao => {
+        botao.addEventListener("click", event => {
+            event.preventDefault();
+
+            const formulario =
+                document.getElementById("form-agendamento") ||
+                document.getElementById("agendamento");
+
+            if (formulario) {
+                formulario.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+            }
+        });
+    });
+
+    const botoesMeusAgendamentos = document.querySelectorAll(
+        "#btn-meus-agendamentos, .btn-meus-agendamentos, [data-action='meus-agendamentos']"
+    );
+
+    botoesMeusAgendamentos.forEach(botao => {
+        botao.addEventListener("click", event => {
+            event.preventDefault();
+
+            const secao =
+                document.getElementById("meus-agendamentos") ||
+                document.getElementById("secao-meus-agendamentos") ||
+                document.getElementById("lista-agendamentos");
+
+            if (secao) {
+                secao.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+            }
+        });
+    });
+}
+
+// ============================================================
 // LOGIN
 // ============================================================
 
@@ -138,11 +261,14 @@ function iniciarIndex() {
 
     if (!formLogin) return;
 
-    formLogin.addEventListener("submit", async (event) => {
+    formLogin.addEventListener("submit", async event => {
         event.preventDefault();
 
-        const email = document.getElementById("email")?.value.trim();
-        const senha = document.getElementById("senha")?.value;
+        const email =
+            document.getElementById("email")?.value.trim();
+
+        const senha =
+            document.getElementById("senha")?.value;
 
         if (!email || !senha) {
             alert("Preencha todos os campos.");
@@ -164,21 +290,37 @@ function iniciarIndex() {
             );
 
             if (usuario.nome) {
-                localStorage.setItem("nome", usuario.nome);
+                localStorage.setItem(
+                    "nome",
+                    usuario.nome
+                );
             }
 
             if (usuario.tipo) {
-                localStorage.setItem("tipo", usuario.tipo);
+                localStorage.setItem(
+                    "tipo",
+                    usuario.tipo
+                );
             }
 
             if (usuario.email) {
-                localStorage.setItem("email", usuario.email);
+                localStorage.setItem(
+                    "email",
+                    usuario.email
+                );
             }
 
             if (usuario.telefone) {
                 localStorage.setItem(
                     "telefone",
                     usuario.telefone
+                );
+            }
+
+            if (usuario.id_clientes) {
+                localStorage.setItem(
+                    "id_clientes",
+                    usuario.id_clientes
                 );
             }
 
@@ -195,7 +337,10 @@ function iniciarIndex() {
             }
 
         } catch (erro) {
-            console.error("Erro no login:", erro);
+            console.error(
+                "Erro no login:",
+                erro
+            );
 
             alert(
                 erro.message ||
@@ -215,8 +360,10 @@ function sair() {
     localStorage.removeItem("tipo");
     localStorage.removeItem("email");
     localStorage.removeItem("telefone");
+    localStorage.removeItem("id_clientes");
 
-    window.location.href = "/frontend/login.html";
+    window.location.href =
+        "/frontend/login.html";
 }
 
 function configurarSair() {
@@ -224,8 +371,8 @@ function configurarSair() {
         "#btn-sair, #sair, .btn-sair, [data-action='sair']"
     );
 
-    botoesSair.forEach((botao) => {
-        botao.addEventListener("click", (event) => {
+    botoesSair.forEach(botao => {
+        botao.addEventListener("click", event => {
             event.preventDefault();
             sair();
         });
@@ -250,12 +397,14 @@ function iniciarDashboard() {
 // ============================================================
 
 async function carregarClientesDashboard() {
-    const tabela = document.getElementById("lista-clientes");
+    const tabela =
+        document.getElementById("lista-clientes");
 
     if (!tabela) return;
 
     try {
-        const clientes = await request("/clientes");
+        const clientes =
+            await request("/clientes");
 
         limparElemento(tabela);
 
@@ -264,11 +413,14 @@ async function carregarClientesDashboard() {
             return;
         }
 
-        clientes.forEach((cliente) => {
-            const tr = document.createElement("tr");
+        clientes.forEach(cliente => {
+            const tr =
+                document.createElement("tr");
 
             tr.innerHTML = `
-                <td>${cliente.id_clientes}</td>
+                <td>
+                    ${cliente.id_clientes}
+                </td>
 
                 <td>
                     ${escaparHTML(cliente.nome)}
@@ -322,7 +474,9 @@ async function carregarClientesDashboard() {
 
 async function carregarFuncionariosDashboard() {
     const tabela =
-        document.getElementById("lista-funcionarios");
+        document.getElementById(
+            "lista-funcionarios"
+        );
 
     if (!tabela) return;
 
@@ -332,13 +486,17 @@ async function carregarFuncionariosDashboard() {
 
         limparElemento(tabela);
 
-        if (!funcionarios || funcionarios.length === 0) {
+        if (
+            !funcionarios ||
+            funcionarios.length === 0
+        ) {
             criarLinhaVazia(tabela, 4);
             return;
         }
 
-        funcionarios.forEach((funcionario) => {
-            const tr = document.createElement("tr");
+        funcionarios.forEach(funcionario => {
+            const tr =
+                document.createElement("tr");
 
             tr.innerHTML = `
                 <td>
@@ -395,21 +553,27 @@ async function carregarFuncionariosDashboard() {
 
 async function carregarServicosDashboard() {
     const tabela =
-        document.getElementById("lista-servicos");
+        document.getElementById(
+            "lista-servicos"
+        );
 
     if (!tabela) return;
 
     try {
-        const servicos = await request("/servicos");
+        const servicos =
+            await request("/servicos");
 
         limparElemento(tabela);
 
-        if (!servicos || servicos.length === 0) {
+        if (
+            !servicos ||
+            servicos.length === 0
+        ) {
             criarLinhaVazia(tabela, 6);
             return;
         }
 
-        servicos.forEach((servico) => {
+        servicos.forEach(servico => {
             const tipo =
                 escaparHTML(servico.tipo);
 
@@ -507,7 +671,9 @@ async function carregarServicosDashboard() {
 
 async function carregarAgendamentos() {
     const tabela =
-        document.getElementById("lista-agendamentos");
+        document.getElementById(
+            "lista-agendamentos"
+        );
 
     if (!tabela) return;
 
@@ -517,12 +683,15 @@ async function carregarAgendamentos() {
 
         limparElemento(tabela);
 
-        if (!agendamentos || agendamentos.length === 0) {
+        if (
+            !agendamentos ||
+            agendamentos.length === 0
+        ) {
             criarLinhaVazia(tabela, 8);
             return;
         }
 
-        agendamentos.forEach((item) => {
+        agendamentos.forEach(item => {
             const tr =
                 document.createElement("tr");
 
@@ -555,7 +724,10 @@ async function carregarAgendamentos() {
                 </td>
 
                 <td>
-                    ${escaparHTML(item.horario || "")}
+                    ${escaparHTML(
+                        String(item.horario || "")
+                            .slice(0, 5)
+                    )}
                 </td>
 
                 <td>
@@ -586,7 +758,9 @@ async function carregarAgendamentos() {
                     <br>
 
                     <small>
-                        ${escaparHTML(statusPagamento)}
+                        ${escaparHTML(
+                            statusPagamento
+                        )}
                     </small>
                 </td>
 
@@ -653,11 +827,13 @@ async function carregarSelectsAgendamento() {
     }
 
     try {
-        const [funcionarios, servicos] =
-            await Promise.all([
-                request("/funcionarios"),
-                request("/servicos")
-            ]);
+        const [
+            funcionarios,
+            servicos
+        ] = await Promise.all([
+            request("/funcionarios"),
+            request("/servicos")
+        ]);
 
         if (selectFuncionario) {
             selectFuncionario.innerHTML = `
@@ -666,7 +842,7 @@ async function carregarSelectsAgendamento() {
                 </option>
             `;
 
-            funcionarios.forEach((funcionario) => {
+            funcionarios.forEach(funcionario => {
                 const option =
                     document.createElement("option");
 
@@ -683,7 +859,7 @@ async function carregarSelectsAgendamento() {
         const cortes = [];
         const barbas = [];
 
-        servicos.forEach((servico) => {
+        servicos.forEach(servico => {
             const tipo =
                 normalizarTipo(servico.tipo);
 
@@ -701,7 +877,7 @@ async function carregarSelectsAgendamento() {
                 </option>
             `;
 
-            cortes.forEach((servico) => {
+            cortes.forEach(servico => {
                 const option =
                     document.createElement("option");
 
@@ -709,7 +885,9 @@ async function carregarSelectsAgendamento() {
                     servico.id_servico;
 
                 option.textContent =
-                    `${servico.tipo} - ${formatarPreco(servico.preco)}`;
+                    `${servico.tipo} - ${formatarPreco(
+                        servico.preco
+                    )}`;
 
                 selectCorte.appendChild(option);
             });
@@ -722,7 +900,7 @@ async function carregarSelectsAgendamento() {
                 </option>
             `;
 
-            barbas.forEach((servico) => {
+            barbas.forEach(servico => {
                 const option =
                     document.createElement("option");
 
@@ -730,7 +908,9 @@ async function carregarSelectsAgendamento() {
                     servico.id_servico;
 
                 option.textContent =
-                    `${servico.tipo} - ${formatarPreco(servico.preco)}`;
+                    `${servico.tipo} - ${formatarPreco(
+                        servico.preco
+                    )}`;
 
                 selectBarba.appendChild(option);
             });
@@ -773,7 +953,10 @@ function renderizarCardsServicos(
 
     limparElemento(container);
 
-    if (!servicos || servicos.length === 0) {
+    if (
+        !servicos ||
+        servicos.length === 0
+    ) {
         container.innerHTML = `
             <p style="text-align:center;">
                 Nenhum serviço disponível.
@@ -783,11 +966,12 @@ function renderizarCardsServicos(
         return;
     }
 
-    servicos.forEach((servico) => {
+    servicos.forEach(servico => {
         const card =
             document.createElement("div");
 
-        card.className = "card-servico";
+        card.className =
+            "card-servico";
 
         card.dataset.id =
             servico.id_servico;
@@ -804,7 +988,9 @@ function renderizarCardsServicos(
                     ? `
                         <img
                             src="${imagem}"
-                            alt="${escaparHTML(servico.tipo)}"
+                            alt="${escaparHTML(
+                                servico.tipo
+                            )}"
                             onerror="
                                 this.style.display='none'
                             "
@@ -827,21 +1013,28 @@ function renderizarCardsServicos(
 
             <div class="card-servico-info">
                 <div class="card-servico-nome">
-                    ${escaparHTML(servico.tipo)}
+                    ${escaparHTML(
+                        servico.tipo
+                    )}
                 </div>
 
                 <div class="card-servico-preco">
-                    ${formatarPreco(servico.preco)}
+                    ${formatarPreco(
+                        servico.preco
+                    )}
                 </div>
             </div>
         `;
 
-        card.addEventListener("click", () => {
-            selecionarServico(
-                servico.id_servico,
-                tipo
-            );
-        });
+        card.addEventListener(
+            "click",
+            () => {
+                selecionarServico(
+                    servico.id_servico,
+                    tipo
+                );
+            }
+        );
 
         container.appendChild(card);
     });
@@ -854,7 +1047,6 @@ function renderizarCardsServicos(
             "card-servico card-nenhuma-barba";
 
         cardNenhuma.dataset.id = "";
-
         cardNenhuma.dataset.tipo = "barba";
 
         cardNenhuma.innerHTML = `
@@ -886,7 +1078,9 @@ function renderizarCardsServicos(
             selecionarNenhumaBarba
         );
 
-        container.appendChild(cardNenhuma);
+        container.appendChild(
+            cardNenhuma
+        );
     }
 }
 
@@ -894,7 +1088,10 @@ function renderizarCardsServicos(
 // SELECIONAR SERVIÇO
 // ============================================================
 
-function selecionarServico(idServico, tipo) {
+function selecionarServico(
+    idServico,
+    tipo
+) {
     const id = String(idServico);
 
     if (tipo === "corte") {
@@ -911,10 +1108,12 @@ function selecionarServico(idServico, tipo) {
             .querySelectorAll(
                 "#lista-cortes-cliente .card-servico"
             )
-            .forEach((card) => {
+            .forEach(card => {
                 card.classList.toggle(
                     "selecionado",
-                    String(card.dataset.id) === id
+                    String(
+                        card.dataset.id
+                    ) === id
                 );
             });
 
@@ -935,10 +1134,12 @@ function selecionarServico(idServico, tipo) {
             .querySelectorAll(
                 "#lista-barbas-cliente .card-servico"
             )
-            .forEach((card) => {
+            .forEach(card => {
                 card.classList.toggle(
                     "selecionado",
-                    String(card.dataset.id) === id
+                    String(
+                        card.dataset.id
+                    ) === id
                 );
             });
     }
@@ -962,7 +1163,7 @@ function selecionarNenhumaBarba() {
         .querySelectorAll(
             "#lista-barbas-cliente .card-servico"
         )
-        .forEach((card) => {
+        .forEach(card => {
             card.classList.remove(
                 "selecionado"
             );
@@ -1003,7 +1204,7 @@ function configurarFormularioAgendamentos() {
     if (form) {
         form.addEventListener(
             "submit",
-            (event) => {
+            event => {
                 event.preventDefault();
                 salvarAgendamento(event);
             }
@@ -1011,7 +1212,7 @@ function configurarFormularioAgendamentos() {
     } else if (btnAgendar) {
         btnAgendar.addEventListener(
             "click",
-            (event) => {
+            event => {
                 event.preventDefault();
                 salvarAgendamento(event);
             }
@@ -1021,7 +1222,7 @@ function configurarFormularioAgendamentos() {
     if (btnCancelar) {
         btnCancelar.addEventListener(
             "click",
-            (event) => {
+            event => {
                 event.preventDefault();
                 resetarFormularioAgendamento();
             }
@@ -1100,7 +1301,10 @@ async function salvarAgendamento(event) {
         return;
     }
 
-    // Horário usando minutos corretamente
+    // ========================================================
+    // HORÁRIO
+    // ========================================================
+
     const [hora, minuto] =
         horario.split(":").map(Number);
 
@@ -1108,10 +1312,14 @@ async function salvarAgendamento(event) {
         hora * 60 + minuto;
 
     const inicioManha = 7 * 60;
-    const fimManha = 11 * 60 + 30;
+    const fimManha =
+        11 * 60 + 30;
 
-    const inicioTarde = 13 * 60;
-    const fimTarde = 19 * 60;
+    const inicioTarde =
+        13 * 60;
+
+    const fimTarde =
+        19 * 60;
 
     const dentroManha =
         minutosDoDia >= inicioManha &&
@@ -1125,44 +1333,47 @@ async function salvarAgendamento(event) {
         alert(
             "O horário deve estar entre 07:00–11:30 ou 13:00–19:00."
         );
-
         return;
     }
+
+    // ========================================================
+    // DATA
+    // ========================================================
 
     const dataSelecionada =
         new Date(`${data}T00:00:00`);
 
-    if (dataSelecionada.getDay() === 0) {
+    if (
+        dataSelecionada.getDay() === 0
+    ) {
         alert(
             "A barbearia não funciona aos domingos."
         );
-
         return;
     }
 
     const hoje = new Date();
 
-    hoje.setHours(0, 0, 0, 0);
+    hoje.setHours(
+        0,
+        0,
+        0,
+        0
+    );
 
     if (dataSelecionada < hoje) {
         alert(
             "Não é possível agendar uma data passada."
         );
-
         return;
     }
 
-    let usuario = null;
+    // ========================================================
+    // USUÁRIO
+    // ========================================================
 
-    try {
-        usuario = JSON.parse(
-            localStorage.getItem(
-                "usuario"
-            )
-        );
-    } catch {
-        usuario = null;
-    }
+    const usuario =
+        obterUsuarioLogado();
 
     const nomeLocal =
         localStorage.getItem("nome") ||
@@ -1172,39 +1383,65 @@ async function salvarAgendamento(event) {
         localStorage.getItem("telefone") ||
         usuario?.telefone;
 
-    if (!nomeLocal && !telefoneLocal) {
+    const idClienteLocal =
+        localStorage.getItem("id_clientes") ||
+        usuario?.id_clientes;
+
+    if (
+        !nomeLocal &&
+        !telefoneLocal &&
+        !idClienteLocal
+    ) {
         alert(
             "Não foi possível identificar o cliente."
         );
-
         return;
     }
 
-    let cliente;
+    let cliente = null;
 
     try {
         const clientes =
             await request("/clientes");
 
-        cliente = clientes.find((c) => {
-            const mesmoNome =
-                nomeLocal &&
-                String(c.nome)
-                    .trim()
-                    .toLowerCase() ===
-                String(nomeLocal)
-                    .trim()
-                    .toLowerCase();
+        // Primeiro tenta pelo ID
+        if (idClienteLocal) {
+            cliente = clientes.find(
+                c =>
+                    Number(
+                        c.id_clientes
+                    ) ===
+                    Number(
+                        idClienteLocal
+                    )
+            );
+        }
 
-            const mesmoTelefone =
-                telefoneLocal &&
-                String(c.telefone)
-                    .replace(/\D/g, "") ===
-                String(telefoneLocal)
-                    .replace(/\D/g, "");
+        // Depois tenta pelo telefone/nome
+        if (!cliente) {
+            cliente = clientes.find(c => {
+                const mesmoNome =
+                    nomeLocal &&
+                    String(c.nome)
+                        .trim()
+                        .toLowerCase() ===
+                    String(nomeLocal)
+                        .trim()
+                        .toLowerCase();
 
-            return mesmoTelefone || mesmoNome;
-        });
+                const mesmoTelefone =
+                    telefoneLocal &&
+                    String(c.telefone)
+                        .replace(/\D/g, "") ===
+                    String(telefoneLocal)
+                        .replace(/\D/g, "");
+
+                return (
+                    mesmoTelefone ||
+                    mesmoNome
+                );
+            });
+        }
 
     } catch (erro) {
         console.error(
@@ -1223,19 +1460,25 @@ async function salvarAgendamento(event) {
         alert(
             "Cliente não encontrado. Faça o cadastro novamente."
         );
-
         return;
     }
 
+    // ========================================================
+    // PAYLOAD
+    // ========================================================
+
     const payload = {
         data,
+
         horario,
 
         clientes_id_clientes:
             cliente.id_clientes,
 
         servico_id_servico:
-            Number(servico_id_servico),
+            Number(
+                servico_id_servico
+            ),
 
         servico_barba_id_servico:
             servico_barba_id_servico
@@ -1251,8 +1494,13 @@ async function salvarAgendamento(event) {
 
         metodo_pagamento,
 
-        status_pagamento: "pendente"
+        status_pagamento:
+            "pendente"
     };
+
+    // ========================================================
+    // ENVIO
+    // ========================================================
 
     try {
         if (id) {
@@ -1260,6 +1508,7 @@ async function salvarAgendamento(event) {
                 `/agendamentos/${id}`,
                 {
                     method: "PUT",
+
                     body: JSON.stringify(
                         payload
                     )
@@ -1275,6 +1524,7 @@ async function salvarAgendamento(event) {
                 "/agendamentos",
                 {
                     method: "POST",
+
                     body: JSON.stringify(
                         payload
                     )
@@ -1312,11 +1562,13 @@ async function salvarAgendamento(event) {
 async function editarAgendamento(id) {
     try {
         const agendamentos =
-            await request("/agendamentos");
+            await request(
+                "/agendamentos"
+            );
 
         const agendamento =
             agendamentos.find(
-                (item) =>
+                item =>
                     Number(
                         item.id_agendamentos
                     ) === Number(id)
@@ -1326,7 +1578,6 @@ async function editarAgendamento(id) {
             alert(
                 "Agendamento não encontrado."
             );
-
             return;
         }
 
@@ -1409,8 +1660,10 @@ async function editarAgendamento(id) {
         }
 
         document
-            .querySelectorAll(".card-servico")
-            .forEach((card) => {
+            .querySelectorAll(
+                ".card-servico"
+            )
+            .forEach(card => {
                 card.classList.remove(
                     "selecionado"
                 );
@@ -1573,8 +1826,10 @@ function resetarFormularioAgendamento() {
     if (pagamento) pagamento.value = "";
 
     document
-        .querySelectorAll(".card-servico")
-        .forEach((card) => {
+        .querySelectorAll(
+            ".card-servico"
+        )
+        .forEach(card => {
             card.classList.remove(
                 "selecionado"
             );
@@ -1618,7 +1873,6 @@ async function verificarDisponibilidade() {
         alert(
             "Selecione a data e o funcionário."
         );
-
         return;
     }
 
@@ -1644,7 +1898,7 @@ async function verificarDisponibilidade() {
             return;
         }
 
-        resposta.forEach((horario) => {
+        resposta.forEach(horario => {
             const botao =
                 document.createElement(
                     "button"
@@ -1669,10 +1923,26 @@ async function verificarDisponibilidade() {
                         campo.value =
                             botao.textContent;
                     }
+
+                    lista
+                        .querySelectorAll(
+                            "button"
+                        )
+                        .forEach(btn => {
+                            btn.classList.remove(
+                                "selecionado"
+                            );
+                        });
+
+                    botao.classList.add(
+                        "selecionado"
+                    );
                 }
             );
 
-            lista.appendChild(botao);
+            lista.appendChild(
+                botao
+            );
         });
 
     } catch (erro) {
@@ -1702,17 +1972,8 @@ async function carregarAgendamentosCliente() {
         const clientes =
             await request("/clientes");
 
-        let usuario = null;
-
-        try {
-            usuario = JSON.parse(
-                localStorage.getItem(
-                    "usuario"
-                ) || "null"
-            );
-        } catch {
-            usuario = null;
-        }
+        const usuario =
+            obterUsuarioLogado();
 
         const nome =
             localStorage.getItem("nome") ||
@@ -1722,29 +1983,53 @@ async function carregarAgendamentosCliente() {
             localStorage.getItem("telefone") ||
             usuario?.telefone;
 
-        const cliente =
-            clientes.find((c) => {
-                const mesmoNome =
-                    nome &&
-                    String(c.nome)
-                        .trim()
-                        .toLowerCase() ===
-                    String(nome)
-                        .trim()
-                        .toLowerCase();
+        const idCliente =
+            localStorage.getItem("id_clientes") ||
+            usuario?.id_clientes;
 
-                const mesmoTelefone =
-                    telefone &&
-                    String(c.telefone)
-                        .replace(/\D/g, "") ===
-                    String(telefone)
-                        .replace(/\D/g, "");
+        let cliente = null;
 
-                return (
-                    mesmoTelefone ||
-                    mesmoNome
+        // Primeiro tenta pelo ID
+        if (idCliente) {
+            cliente =
+                clientes.find(
+                    c =>
+                        Number(
+                            c.id_clientes
+                        ) ===
+                        Number(
+                            idCliente
+                        )
                 );
-            });
+        }
+
+        // Se não achou pelo ID,
+        // tenta pelo telefone ou nome
+        if (!cliente) {
+            cliente =
+                clientes.find(c => {
+                    const mesmoNome =
+                        nome &&
+                        String(c.nome)
+                            .trim()
+                            .toLowerCase() ===
+                        String(nome)
+                            .trim()
+                            .toLowerCase();
+
+                    const mesmoTelefone =
+                        telefone &&
+                        String(c.telefone)
+                            .replace(/\D/g, "") ===
+                        String(telefone)
+                            .replace(/\D/g, "");
+
+                    return (
+                        mesmoTelefone ||
+                        mesmoNome
+                    );
+                });
+        }
 
         if (!cliente) {
             criarLinhaVazia(
@@ -1757,11 +2042,13 @@ async function carregarAgendamentosCliente() {
         }
 
         const agendamentos =
-            await request("/agendamentos");
+            await request(
+                "/agendamentos"
+            );
 
         const meusAgendamentos =
             agendamentos.filter(
-                (item) =>
+                item =>
                     Number(
                         item.clientes_id_clientes
                     ) ===
@@ -1772,7 +2059,9 @@ async function carregarAgendamentosCliente() {
 
         limparElemento(tabela);
 
-        if (!meusAgendamentos.length) {
+        if (
+            !meusAgendamentos.length
+        ) {
             criarLinhaVazia(
                 tabela,
                 7,
@@ -1782,90 +2071,105 @@ async function carregarAgendamentosCliente() {
             return;
         }
 
-        meusAgendamentos.forEach((item) => {
-            const tr =
-                document.createElement("tr");
+        meusAgendamentos.forEach(
+            item => {
+                const tr =
+                    document.createElement(
+                        "tr"
+                    );
 
-            const servico =
-                item.servico ||
-                item.nome_servico ||
-                item.tipo ||
-                "Serviço";
+                const servico =
+                    item.servico ||
+                    item.nome_servico ||
+                    item.tipo ||
+                    "Serviço";
 
-            const barba =
-                item.servico_barba ||
-                item.barba ||
-                "";
+                const barba =
+                    item.servico_barba ||
+                    item.barba ||
+                    "";
 
-            const textoServico =
-                barba
-                    ? `${escaparHTML(servico)} + ${escaparHTML(barba)}`
-                    : escaparHTML(servico);
+                const textoServico =
+                    barba
+                        ? `${escaparHTML(
+                            servico
+                        )} + ${escaparHTML(
+                            barba
+                        )}`
+                        : escaparHTML(
+                            servico
+                        );
 
-            tr.innerHTML = `
-                <td>
-                    ${formatarData(item.data)}
-                </td>
+                tr.innerHTML = `
+                    <td>
+                        ${formatarData(
+                            item.data
+                        )}
+                    </td>
 
-                <td>
-                    ${escaparHTML(
-                        String(
-                            item.horario || ""
-                        ).slice(0, 5)
-                    )}
-                </td>
+                    <td>
+                        ${escaparHTML(
+                            String(
+                                item.horario ||
+                                ""
+                            ).slice(0, 5)
+                        )}
+                    </td>
 
-                <td>
-                    ${textoServico}
-                </td>
+                    <td>
+                        ${textoServico}
+                    </td>
 
-                <td>
-                    ${escaparHTML(
-                        item.funcionario ||
-                        item.nome_funcionario ||
-                        ""
-                    )}
-                </td>
+                    <td>
+                        ${escaparHTML(
+                            item.funcionario ||
+                            item.nome_funcionario ||
+                            ""
+                        )}
+                    </td>
 
-                <td>
-                    ${escaparHTML(
-                        item.metodo_pagamento ||
-                        ""
-                    )}
-                </td>
+                    <td>
+                        ${escaparHTML(
+                            item.metodo_pagamento ||
+                            ""
+                        )}
+                    </td>
 
-                <td>
-                    ${escaparHTML(
-                        item.status_pagamento ||
-                        "pendente"
-                    )}
-                </td>
+                    <td>
+                        ${escaparHTML(
+                            item.status_pagamento ||
+                            "pendente"
+                        )}
+                    </td>
 
-                <td>
-                    <button
-                        type="button"
-                        onclick="editarAgendamento(${item.id_agendamentos})"
-                    >
-                        Editar
-                    </button>
+                    <td>
+                        <button
+                            type="button"
+                            onclick="editarAgendamento(${item.id_agendamentos})"
+                        >
+                            Editar
+                        </button>
 
-                    <button
-                        type="button"
-                        onclick="excluirAgendamento(${item.id_agendamentos})"
-                    >
-                        Cancelar
-                    </button>
-                </td>
-            `;
+                        <button
+                            type="button"
+                            onclick="excluirAgendamento(${item.id_agendamentos})"
+                        >
+                            Cancelar
+                        </button>
+                    </td>
+                `;
 
-            tabela.appendChild(tr);
-        });
+                tabela.appendChild(tr);
+            }
+        );
 
     } catch (erro) {
         console.error(
             "Erro ao carregar agendamentos do cliente:",
             erro
         );
+
+        limparElemento(tabela);
 
         criarLinhaVazia(
             tabela,
@@ -1880,14 +2184,19 @@ async function carregarAgendamentosCliente() {
 // ============================================================
 
 function iniciarCliente() {
-    // CARREGA OS AGENDAMENTOS DO CLIENTE
+    // Mostra o nome do usuário
+    carregarNomeUsuario();
+
+    // Configura navegação
+    configurarNavegacaoCliente();
+
+    // Carrega agendamentos
     carregarAgendamentosCliente();
 
-    // CARREGA FUNCIONÁRIOS E SERVIÇOS
+    // Carrega funcionários e serviços
     carregarSelectsAgendamento();
 
-    // IMPORTANTE:
-    // antes essa função não era chamada no cliente
+    // Configura formulário
     configurarFormularioAgendamentos();
 
     const btnDisponibilidade =
@@ -1898,7 +2207,7 @@ function iniciarCliente() {
     if (btnDisponibilidade) {
         btnDisponibilidade.addEventListener(
             "click",
-            (event) => {
+            event => {
                 event.preventDefault();
                 verificarDisponibilidade();
             }
@@ -2053,7 +2362,7 @@ function editarServico(id) {
 function configurarTema() {
     const botoesTema =
         document.querySelectorAll(
-            "#toggle-tema, #btn-tema, .btn-tema"
+            "#toggle-tema, #btn-tema, .btn-tema, #darkModeToggle"
         );
 
     if (!botoesTema.length) return;
@@ -2061,19 +2370,35 @@ function configurarTema() {
     const temaSalvo =
         localStorage.getItem("tema");
 
-    if (temaSalvo === "dark") {
-        document.body.classList.add("dark");
-    } else {
-        document.body.classList.remove("dark");
-    }
+    const darkModeSalvo =
+        localStorage.getItem("darkMode");
 
-    function atualizarIcone() {
-        const escuro =
-            document.body.classList.contains(
-                "dark"
-            );
+    let escuro =
+        temaSalvo === "dark" ||
+        darkModeSalvo === "true";
 
-        botoesTema.forEach((botao) => {
+    function aplicarTema() {
+        document.body.classList.toggle(
+            "dark",
+            escuro
+        );
+
+        document.body.classList.toggle(
+            "dark-mode",
+            escuro
+        );
+
+        localStorage.setItem(
+            "tema",
+            escuro ? "dark" : "light"
+        );
+
+        localStorage.setItem(
+            "darkMode",
+            escuro ? "true" : "false"
+        );
+
+        botoesTema.forEach(botao => {
             botao.textContent =
                 escuro ? "☀️" : "🌙";
 
@@ -2093,25 +2418,17 @@ function configurarTema() {
         });
     }
 
-    atualizarIcone();
+    aplicarTema();
 
-    botoesTema.forEach((botao) => {
+    botoesTema.forEach(botao => {
         botao.addEventListener(
             "click",
-            () => {
-                const escuro =
-                    document.body.classList.toggle(
-                        "dark"
-                    );
+            event => {
+                event.preventDefault();
 
-                localStorage.setItem(
-                    "tema",
-                    escuro
-                        ? "dark"
-                        : "light"
-                );
+                escuro = !escuro;
 
-                atualizarIcone();
+                aplicarTema();
             }
         );
     });
@@ -2162,3 +2479,9 @@ window.verificarDisponibilidade =
 
 window.sair =
     sair;
+
+window.carregarAgendamentosCliente =
+    carregarAgendamentosCliente;
+
+window.carregarNomeUsuario =
+    carregarNomeUsuario;
