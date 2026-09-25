@@ -1,37 +1,38 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Barbearia - Início</title>
-  <link rel="stylesheet" href="../css/styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório - GZ Barbearia</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="manifest" href="../manifest.json">
 </head>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#660000">
-<body data-page="index">
-  <button id="tema">🌙</button>
+
+<body data-page="relatorio">
   <header>
+    <div class="container topo">
+      <div class="logo-area">
+        <img src="../Imagens/1.png" class="logo" alt="GZ Barbearia">
+        <div>
+          <h1>GZ Barbearia</h1>
+          <span>Relatório administrativo</span>
+        </div>
+      </div>
 
-  <div class="container topo">
-
-    <div class="logo-area">
-      <img src="../Imagens/1.png" class="logo">
-      <h1>Relatório</h1>
+      <nav>
+        <a href="index.html">Relatório</a>
+        <a href="dashboard.html">Gerenciar</a>
+        <a href="../user/cliente.html">Área do cliente</a>
+        <a href="#" id="btnSair">Sair</a>
+        <button id="tema" type="button" class="btn-tema">🌙</button>
+      </nav>
     </div>
-    
-    <nav>
-      <a href="index.html">Relatório</a>
-      <a href="dashboard.html">Cadastro</a>
-      <a href="#" id="btnSair">Sair</a>
-    </nav>
-
-  </div>
-</header>
+  </header>
 
   <main class="container">
     <section class="card">
-      <h2>Resumo</h2>
-      <p id="status-api" class="status">Verificando conexão com backend...</p>
+      <h2>Resumo do sistema</h2>
+      <p id="status-api" class="status">Verificando conexão com o backend...</p>
     </section>
 
     <section class="grid-resumo">
@@ -57,7 +58,8 @@
     </section>
 
     <section class="card">
-      <h2>Agendamentos</h2>
+      <h2>Agendamentos recentes</h2>
+
       <div class="tabela-wrap">
         <table>
           <thead>
@@ -70,35 +72,21 @@
               <th>Funcionário</th>
             </tr>
           </thead>
+
           <tbody id="lista-agendamentos-home">
             <tr>
-              <td colspan="6" class="mensagem-vazia">Carregando...</td>
+              <td colspan="6">Carregando...</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
   </main>
-  <script>
-document.getElementById("btnSair").addEventListener("click", (e) => {
-    e.preventDefault();
 
-    localStorage.removeItem("nome");
-    localStorage.removeItem("tipo");
+  <footer>
+    <p>© 2026 GZ Barbearia — Sistema de gerenciamento</p>
+  </footer>
 
-    window.location.href = "../login.html";
-});
-</script>
-  <script src="/frontend/js/app.js"></script>
-  <script>
-if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js");
-}
-</script>
-<div class="menu-mobile">
-    <a href="index.html">🏠</a>
-    <a href="dashboard.html">📋</a>
-    <a href="cliente.html">👤</a>
-</div>
+  <script src="../js/app.js"></script>
 </body>
 </html>

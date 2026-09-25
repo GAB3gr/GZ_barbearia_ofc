@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 
@@ -45,7 +46,10 @@
             </div>
 
             <nav id="menu">
-                                               
+
+                <a href="cliente.html">
+                    Agendar
+                </a>
 
                 <a
                     href="#"
@@ -476,50 +480,23 @@
          LOGOUT
     ========================== -->
 
-  <script>
-    function logout() {
-        localStorage.removeItem("usuario");
-        localStorage.removeItem("nome");
-        localStorage.removeItem("telefone");
-
-        window.location.href = "../login.html";
-    }
-</script>
-
-
-    <!-- =========================
-         SERVICE WORKER
-    ========================== -->
-
     <script>
 
-        if ("serviceWorker" in navigator) {
+        function logout() {
 
-            window.addEventListener("load", () => {
+            localStorage.removeItem("usuario");
 
-                navigator.serviceWorker
-                    .register("/frontend/user/sw.js")
-                    .then(() => {
+            localStorage.removeItem("nome");
 
-                        console.log(
-                            "Service Worker registrado."
-                        );
+            localStorage.removeItem("telefone");
 
-                    })
-                    .catch((error) => {
-
-                        console.error(
-                            "Erro ao registrar Service Worker:",
-                            error
-                        );
-
-                    });
-
-            });
+            window.location.href = "../login.html";
 
         }
 
     </script>
+
+
 
 </body>
 

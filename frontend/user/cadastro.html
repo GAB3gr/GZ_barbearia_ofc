@@ -448,7 +448,12 @@
         }
 
         try {
-          const resposta = await fetch("http://localhost:3000/cadastro", {
+          const API_URL =
+            (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+              ? "http://localhost:3000"
+              : "https://gz-barbearia-ofc-2.onrender.com";
+
+          const resposta = await fetch(`${API_URL}/cadastro`, {
             method: "POST",
 
             headers: {
@@ -469,6 +474,18 @@
           const dados = await resposta.json();
 
           if (resposta.ok) {
+            const usuario = dados.usuario || null;
+
+            if (usuario) {
+              localStorage.setItem("usuario", JSON.stringify(usuario));
+              localStorage.setItem("id_usuario", usuario.id_usuario || usuario.id || "");
+              localStorage.setItem("id_cliente", usuario.id_cliente || "");
+              localStorage.setItem("nome", usuario.nome || "");
+              localStorage.setItem("email", usuario.email || "");
+              localStorage.setItem("telefone", usuario.telefone || "");
+              localStorage.setItem("tipo", usuario.tipo || "cliente");
+            }
+
             alert("Conta criada com sucesso!");
 
             window.location.href = "../login.html";

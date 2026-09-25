@@ -557,118 +557,73 @@
     </div>
 
     <script>
+      const API_URL =
+        (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+          ? "http://localhost:3000"
+          : "https://gz-barbearia-ofc-2.onrender.com";
+
       async function login() {
+        const email = document.getElementById("user").value.trim();
+        const senha = document.getElementById("pass").value;
+        const msg = document.getElementById("msg");
 
-        const user =
-          document.getElementById("user").value.trim();
-
-        const pass =
-          document.getElementById("pass").value;
-
-        const msg =
-          document.getElementById("msg");
-
-        if (!user || !pass) {
-
-          msg.innerText =
-            "Preencha o e-mail e a senha.";
-
+        if (!email || !senha) {
+          msg.textContent = "Preencha o e-mail e a senha.";
           msg.style.color = "red";
-
           return;
         }
 
+        msg.textContent = "Entrando...";
+        msg.style.color = "";
+
         try {
+          const resposta = await fetch(`${API_URL}/usuarios/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ email, senha })
+          });
 
-          const resposta = await fetch(
-            "http://localhost:3000/login",
-            {
-              method: "POST",
+          const dados = await resposta.json().catch(() => ({}));
 
-              headers: {
-                "Content-Type": "application/json"
-              },
-
-              body: JSON.stringify({
-                email: user,
-                senha: pass
-              })
-            }
-          );
-
-          const dados =
-            await resposta.json();
-
-          if (resposta.ok) {
-
-            const tipoUsuario =
-              String(dados.tipo || "")
-                .trim()
-                .toLowerCase();
-
-            const ehAdmin =
-              tipoUsuario === "adm" ||
-              tipoUsuario === "admin";
-
-            localStorage.setItem(
-              "logado",
-              "true"
+          if (!resposta.ok) {
+            throw new Error(
+              dados.erro || "E-mail ou senha inválidos."
             );
-
-            localStorage.setItem(
-              "id_usuario",
-              dados.id
-            );
-
-            localStorage.setItem(
-              "nome",
-              dados.nome
-            );
-
-            localStorage.setItem(
-              "telefone",
-              dados.telefone || ""
-            );
-
-            localStorage.setItem(
-              "tipo",
-              dados.tipo
-            );
-
-            if (ehAdmin) {
-
-              window.location.href =
-                "admin/dashboard.html";
-
-            } else {
-
-              window.location.href =
-                "user/cliente.html";
-
-            }
-
-          } else {
-
-            msg.innerText =
-              dados.erro ||
-              "Email ou senha inválidos.";
-
-            msg.style.color = "red";
           }
 
+          localStorage.setItem("logado", "true");
+          localStorage.setItem("usuario", JSON.stringify(dados));
+          localStorage.setItem("id_usuario", dados.id_usuario || dados.id || "");
+          localStorage.setItem("id_cliente", dados.id_cliente || "");
+          localStorage.setItem("nome", dados.nome || "");
+          localStorage.setItem("email", dados.email || "");
+          localStorage.setItem("telefone", dados.telefone || "");
+          localStorage.setItem("tipo", dados.tipo || "cliente");
+
+          const tipo = String(dados.tipo || "")
+            .trim()
+            .toLowerCase();
+
+          window.location.href =
+            ["adm", "admin", "administrador"].includes(tipo)
+              ? "/frontend/admin/dashboard.html"
+              : "/frontend/user/cliente.html";
         } catch (erro) {
-
-          console.error(
-            "Erro no login:",
-            erro
-          );
-
-          msg.innerText =
-            "Erro ao conectar com o servidor.";
-
+          console.error("Erro no login:", erro);
+          msg.textContent = erro.message;
           msg.style.color = "red";
         }
       }
+
+      document.getElementById("user").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") login();
+      });
+
+      document.getElementById("pass").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") login();
+      });
     </script>
 
     <!-- Tema global -->
